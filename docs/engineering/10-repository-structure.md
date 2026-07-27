@@ -34,9 +34,13 @@ CoreStack/
 
 **Decisions:**
 
-- **No speculative module folders.** Empty `packages/auth/` today would be a
-  lie about status and would rot ahead of its design. Folders appear when
-  their blueprint epic starts (the module template E05-T29 stamps them out).
+- **No speculative module _code_ — but visible skeleton folders.** _(Amended
+  2026-07-28 by founder decision.)_ Approved packages/apps/examples get a
+  placeholder folder containing **only a purpose README** — no `package.json`,
+  so they are inert to the workspace (pnpm/turbo ignore them) until their
+  blueprint epic starts and the module template (E05-T29) stamps in real
+  structure. The tree communicates the plan; the workspace stays honest about
+  status. The original rule — no speculative _code_ — stands.
 - **`tooling/` holds packages, not loose files.** Shared config consumed as
   workspace packages (`@corestack/tsconfig`, `@corestack/eslint-config`) gets
   versioning, review, and a single upgrade point — loose root-level config

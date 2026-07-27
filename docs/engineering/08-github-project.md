@@ -5,7 +5,7 @@
 - **Date:** 2026-07-28
 - **Depends on:** [Engineering Blueprint](00-OVERVIEW.md)
 - **Execution note:** the repository has **no GitHub remote yet**. Everything
-  here is ready to execute the moment the `corestack/corestack` repository is
+  here is ready to execute the moment the `africorex-ltd/Corestack` repository is
   created; the commands in §6 are the executable form of this plan. Nothing in
   this document is run until the founder approves repo creation.
 
@@ -13,7 +13,7 @@
 
 ## 1. Repository Setup
 
-- **Org/repo:** `corestack/corestack` (monorepo, per ADR-0002). Additional
+- **Org/repo:** `africorex-ltd/Corestack` (monorepo, per ADR-0002). Additional
   repos later: `corestack/ops` (private, §39 infra-as-code), docs stay in-repo.
 - **Settings:** squash-merge only (linear history), merge queue on `main`,
   branch protection (§ see [CONTRIBUTING.md](../../CONTRIBUTING.md) — required
@@ -114,7 +114,7 @@ Milestones:
 ```bash
 for m in "M0 Foundation" "M1 Identity preview" "M2 Control plane" \
          "M3 Revenue & delivery" "M4 Surface complete" "M5 1.0 hardened"; do
-  gh api repos/corestack/corestack/milestones -f title="${m%% *}" -f description="${m#* } — exit criteria: docs/engineering/00-OVERVIEW.md §6"
+  gh api repos/africorex-ltd/Corestack/milestones -f title="${m%% *}" -f description="${m#* } — exit criteria: docs/engineering/00-OVERVIEW.md §6"
 done
 ```
 

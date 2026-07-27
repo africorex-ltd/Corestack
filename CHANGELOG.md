@@ -13,6 +13,14 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
 
 ### Foundation phase (pre-release)
 
+- **Repository skeleton & remote:** initial commit pushed to
+  `africorex-ltd/Corestack`; visible placeholder folders (purpose READMEs
+  only, no workspace membership) added for all approved packages, apps, and
+  example assets — structure-doc §1 amended accordingly by founder decision.
+  The generic scaffold's conflicting elements (organizations/tenants split,
+  `permissions`, `ui`, `ai`, `plugins`, `database` packages, `infrastructure/`)
+  were reconciled to the approved architecture rather than adopted.
+
 - **E01-T01 Workspace hardening:** shared tooling presets are now workspace
   packages consumed directly (`@corestack/tsconfig` by the kernel,
   `@corestack/prettier-config` via the root `prettier` field); added the
