@@ -36,10 +36,23 @@ export default tseslint.config(
     },
   },
   {
-    // Production source: no console — the Logger port exists for a reason.
+    // Production source: no console (the Logger port exists for a reason) and
+    // no credential-bearing fields in logger metadata. The sensitive-log rule
+    // is a deny-list heuristic scoped to logger-shaped calls; it will produce
+    // occasional false positives near logging code — that is the intended
+    // trade (rename the local, don't weaken the rule). See README for scope.
     files: ["packages/*/src/**"],
     rules: {
       "no-console": "error",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(trace|debug|info|warn|error|fatal)$/] ObjectExpression > Property[key.name=/^(password|passwordHash|passwd|secret|clientSecret|token|rawToken|accessToken|refreshToken|apiKey|authorization|credential|credentials|cookie|setCookie)$/]",
+          message:
+            "Never log credential-bearing fields — redact or omit (logging policy, Architecture §30).",
+        },
+      ],
     },
   },
   {
