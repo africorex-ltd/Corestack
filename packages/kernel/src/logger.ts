@@ -65,17 +65,17 @@ export interface CapturedLogEntry {
   readonly fields: LogFields;
 }
 
-/** Test adapter: records entries (with child fields merged) for assertions. */
+/**
+ * Test adapter: records entries (with child fields merged) for assertions.
+ * Children share their parent's `entries` sink by construction (AUD-09).
+ */
 export class CaptureLogger implements Logger {
-  readonly entries: CapturedLogEntry[] = [];
+  readonly entries: CapturedLogEntry[];
   readonly #bound: LogFields;
 
-  constructor(bound: LogFields = {}, entries?: CapturedLogEntry[]) {
+  constructor(bound: LogFields = {}, sink: CapturedLogEntry[] = []) {
     this.#bound = bound;
-    if (entries) {
-      // Children share the parent's entry sink.
-      (this as { entries: CapturedLogEntry[] }).entries = entries;
-    }
+    this.entries = sink;
   }
 
   #log(level: LogLevel, message: string, fields: LogFields = {}): void {
