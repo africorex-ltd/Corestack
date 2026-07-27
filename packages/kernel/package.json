@@ -1,10 +1,28 @@
 {
   "name": "@corestack/kernel",
   "version": "0.1.0",
-  "description": "CoreStack shared building blocks: Result, error taxonomy, clock and id ports.",
+  "description": "CoreStack shared contracts: Result, error taxonomy, Context, domain events, and the EventBus/Logger/Cache/RateLimiter/Encrypter/UnitOfWork ports with reference implementations.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/africorex-ltd/Corestack.git",
+    "directory": "packages/kernel"
+  },
+  "homepage": "https://github.com/africorex-ltd/Corestack/tree/main/packages/kernel#readme",
+  "bugs": "https://github.com/africorex-ltd/Corestack/issues",
+  "keywords": [
+    "corestack",
+    "saas",
+    "clean-architecture",
+    "ddd",
+    "result",
+    "domain-events"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -12,7 +30,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -22,6 +41,7 @@
   },
   "devDependencies": {
     "@corestack/tsconfig": "workspace:*",
+    "@vitest/coverage-v8": "^3.2.7",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   }
