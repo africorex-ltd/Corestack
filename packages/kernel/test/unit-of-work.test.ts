@@ -41,6 +41,33 @@ describe("InMemoryUnitOfWork", () => {
     expect(delivered).toEqual(["a-1", "b-1"]);
   });
 
+  it("AUD-03 regression: consumer failures never fail the producer (ADR-0009)", async () => {
+    // Before the fix, a throwing subscriber rejected run() AFTER the work
+    // had logically committed — diverging from production semantics where
+    // the outbox relay isolates consumer failures from producers.
+    const bus = new InMemoryEventBus();
+    bus.subscribe({
+      consumer: "broken",
+      event: "*",
+      handler: () => {
+        throw new Error("consumer exploded");
+      },
+    });
+    const observed: unknown[] = [];
+    const uow = new InMemoryUnitOfWork(bus, {
+      onDispatchError: (error, events) => observed.push([error, events.length]),
+    });
+
+    const result = await uow.run(async (tx) => {
+      tx.publish(makeEvent());
+      return "committed";
+    });
+
+    expect(result).toBe("committed"); // the use case succeeded
+    expect(observed).toHaveLength(1); // the failure was observed, not thrown
+    expect((observed[0] as [unknown, number])[0]).toBeInstanceOf(AggregateError);
+  });
+
   it("discards staged events when work throws", async () => {
     const bus = new InMemoryEventBus();
     const delivered: string[] = [];
@@ -69,6 +96,29 @@ describe("idempotentHandler", () => {
     await handler(event);
     await handler(event); // redelivery
     expect(calls).toBe(1);
+  });
+
+  it("AUD-02 regression: a failed event stays unmarked and is retried on redelivery", async () => {
+    // Before the fix, the event was marked BEFORE handling, so a handler
+    // failure permanently lost the event (at-most-once). At-least-once
+    // requires the failure path to leave the event retryable.
+    const store = new InMemoryProcessedEventStore();
+    let attempts = 0;
+    const handler = idempotentHandler("audit", store, () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("transient failure");
+    });
+
+    const event = makeEvent();
+    await expect(handler(event)).rejects.toThrow("transient failure");
+    expect(await store.hasProcessed("audit", event.id)).toBe(false);
+
+    await handler(event); // redelivery succeeds
+    expect(attempts).toBe(2);
+    expect(await store.hasProcessed("audit", event.id)).toBe(true);
+
+    await handler(event); // further redelivery is a no-op
+    expect(attempts).toBe(2);
   });
 
   it("dedupes per consumer, not globally", async () => {
