@@ -123,6 +123,29 @@ describe("RateLimiter", () => {
     await limiter.consume("a", policy, 3);
     expect((await limiter.consume("b", policy)).allowed).toBe(true);
   });
+
+  it("AUD-05 regression: expired windows are pruned — the bucket map is bounded", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
+    const limiter = new InMemoryRateLimiter({ clock, maxBuckets: 5 });
+
+    for (let i = 0; i < 5; i++) await limiter.consume(`old-${i}`, policy);
+    expect(limiter.bucketCount).toBe(5);
+
+    clock.advance(policy.windowMs + 1); // all five expire
+    await limiter.consume("fresh", policy); // triggers prune at cap
+    expect(limiter.bucketCount).toBe(1);
+  });
+
+  it("AUD-05: when all windows are live, oldest buckets are evicted to stay bounded", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
+    const limiter = new InMemoryRateLimiter({ clock, maxBuckets: 3 });
+
+    for (let i = 0; i < 3; i++) await limiter.consume(`live-${i}`, policy);
+    await limiter.consume("live-3", policy); // over cap, nothing expired → evict oldest
+
+    expect(limiter.bucketCount).toBeLessThanOrEqual(3);
+    expect((await limiter.consume("live-3", policy)).allowed).toBe(true);
+  });
 });
 
 describe("Encrypter (WebCrypto AES-256-GCM)", () => {
