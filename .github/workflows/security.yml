@@ -11,27 +11,32 @@ permissions:
   contents: read
   security-events: write
 
+# Actions are SHA-pinned (AUD-04).
+
 jobs:
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: github/codeql-action/init@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
         with:
           languages: javascript-typescript
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
 
   audit:
-    name: Dependency audit
+    name: Dependency audit (scheduled + main)
+    # PR-blocking on unfixable advisories trains people to ignore red
+    # (AUD-13): the audit gate runs on main pushes and the weekly schedule;
+    # Renovate owns the remediation path.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Moderate+ fails the lane; low findings surface in the log for triage.
       - run: pnpm audit --audit-level moderate
