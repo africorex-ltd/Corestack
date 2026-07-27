@@ -59,7 +59,13 @@ export function createEvent<TPayload>(
       metadata: { name: input.name },
     });
   }
-  return {
+  // Frozen (AUD-10): events fan out to many consumers; a mutating consumer
+  // must fail loudly, not corrupt later consumers. Note the envelope freeze
+  // is shallow by design — `payload` immutability is the emitter's duty
+  // (JSON-serializable value objects), and `occurredAt` is a Date whose
+  // internals Object.freeze cannot protect; consumers must not call its
+  // mutators (enforced by the readonly types and review).
+  return Object.freeze({
     id: deps.ids.generate(),
     name: input.name,
     version: input.version,
@@ -70,7 +76,7 @@ export function createEvent<TPayload>(
     correlationId: context.correlationId,
     causationId: context.causationId,
     payload: input.payload,
-  };
+  });
 }
 
 /** Wire shape: identical to `DomainEvent` with `occurredAt` as an ISO-8601 string. */
@@ -96,5 +102,5 @@ export function deserializeEvent<TPayload>(
       metadata: { eventId: serialized.id },
     });
   }
-  return { ...serialized, occurredAt };
+  return Object.freeze({ ...serialized, occurredAt });
 }

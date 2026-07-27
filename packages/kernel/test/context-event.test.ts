@@ -40,6 +40,17 @@ describe("Context", () => {
     expect(context.organizationId).toBeNull();
   });
 
+  it("AUD-10 regression: contexts are frozen — mutation fails loudly", () => {
+    const context = userContext();
+    expect(() => {
+      (context as { organizationId: string | null }).organizationId = "org-evil";
+    }).toThrow(TypeError);
+    expect(() => {
+      (context.actor as { id: string | null }).id = "attacker";
+    }).toThrow(TypeError);
+    expect(context.organizationId).toBe("org-1");
+  });
+
   it("causedBy preserves the correlation journey and sets causation", () => {
     const parent = userContext();
     const child = causedBy(parent, "event-42");
@@ -94,6 +105,18 @@ describe("DomainEvent", () => {
         }),
       ).toThrow(ValidationError);
     }
+  });
+
+  it("AUD-10 regression: events are frozen — a mutating consumer fails loudly", () => {
+    const event = createEvent(
+      { name: "tenancy.member.invited", version: 1, payload: { email: "a@example.com" } },
+      userContext(),
+      { clock: clock(), ids: ids() },
+    );
+    expect(() => {
+      (event as { organizationId: string | null }).organizationId = "org-evil";
+    }).toThrow(TypeError);
+    expect(event.organizationId).toBe("org-1");
   });
 
   it("serialize → JSON → deserialize round-trips exactly", () => {

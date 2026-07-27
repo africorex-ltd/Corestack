@@ -39,13 +39,15 @@ export interface CreateContextInput {
 }
 
 export function createContext(input: CreateContextInput, ids: IdGenerator): Context {
-  return {
-    actor: input.actor,
+  // Frozen (AUD-10): contexts are shared across use cases, events, and logs;
+  // structural immutability must hold at runtime, not just in the types.
+  return Object.freeze({
+    actor: Object.freeze({ type: input.actor.type, id: input.actor.id }),
     organizationId: input.organizationId ?? null,
     correlationId: input.correlationId ?? ids.generate(),
     causationId: input.causationId ?? null,
     locale: input.locale ?? null,
-  };
+  });
 }
 
 /** Context for platform-initiated work (sweepers, schedulers, migrations). */
@@ -59,5 +61,5 @@ export function systemContext(ids: IdGenerator): Context {
  * handlers so "everything that happened because X" stays one query.
  */
 export function causedBy(parent: Context, causationId: string): Context {
-  return { ...parent, causationId };
+  return Object.freeze({ ...parent, causationId });
 }
