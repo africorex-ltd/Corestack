@@ -1,5 +1,9 @@
 # @corestack/kernel
 
+> **Status: Release Candidate** —
+> [certification report](../../docs/quality/certifications/kernel-0.2.0-rc.md)
+> (2026-07-28). Publish awaits npm credentials.
+
 Shared building blocks for every CoreStack module. The kernel deliberately
 contains **only cross-cutting mechanics with no business meaning**, has **zero
 runtime dependencies**, and compiles against the pure ES2022 lib — no Node or

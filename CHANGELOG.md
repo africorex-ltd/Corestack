@@ -13,6 +13,17 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
 
 ### Foundation phase (pre-release)
 
+- **Audit remediation + Continuous Quality Governance:** all four P0 findings
+  fixed with regression tests (CI silent-success guards; `idempotentHandler`
+  now genuinely at-least-once; `InMemoryUnitOfWork` isolates consumer
+  failures per ADR-0009; workflows SHA-pinned and release gated); P1 batch
+  resolved (bounded rate-limiter memory, publish metadata, deny-list sync
+  test, frozen envelopes, overview rewrite). New: `@corestack/architecture-tests`
+  fitness suite (cycles, cross-package boundaries, manifest/ADR compliance),
+  `docs/quality/` (dashboard, remediation log, release-certification
+  procedure), and the standing no-features-while-P0 policy. **Kernel
+  certified Release Candidate** (93 repo tests; kernel 97.7%/98.2% coverage).
+
 - **E02-T01…T13 kernel contract surface:** Context + correlation model,
   versioned event envelope with serialization, EventBus port (normative
   semantics) + in-memory bus, Logger/Cache/RateLimiter/Encrypter/UnitOfWork

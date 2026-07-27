@@ -19,6 +19,9 @@ release mechanics in [docs/engineering/09-release-versioning.md](docs/engineerin
 - **Security defaults are not configurable footguns.** A PR that makes the
   insecure path the easy path will not merge.
 - **No new runtime dependency without written justification** in the PR.
+- **No new features while unresolved P0 findings exist** — the
+  [quality dashboard](docs/quality/dashboard.md) is the gate of record;
+  remediation always outranks features.
 - **DCO:** sign off every commit (`git commit -s`). No CLA (inbound=outbound,
   MIT).
 
