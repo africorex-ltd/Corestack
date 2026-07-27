@@ -73,3 +73,45 @@ export function unwrapOrThrow<T, E>(result: Result<T, E>): T {
   }
   throw new TypeError(`Called unwrapOrThrow on an Err result: ${String(result.error)}`);
 }
+
+/** Combine results: all Ok → Ok of values (in order); else the first Err. */
+export function all<T, E>(results: readonly Result<T, E>[]): Result<T[], E> {
+  const values: T[] = [];
+  for (const result of results) {
+    if (!result.ok) return result;
+    values.push(result.value);
+  }
+  return ok(values);
+}
+
+/**
+ * Bridge a throwing boundary into Result space. `mapError` is mandatory:
+ * an untyped `unknown` error escaping into use-case signatures is exactly
+ * what the Result convention exists to prevent.
+ */
+export async function fromPromise<T, E>(
+  promise: Promise<T>,
+  mapError: (error: unknown) => E,
+): Promise<Result<T, E>> {
+  try {
+    return ok(await promise);
+  } catch (error) {
+    return err(mapError(error));
+  }
+}
+
+/** Async variant of `map`. */
+export async function mapAsync<T, U, E>(
+  result: Result<T, E>,
+  fn: (value: T) => Promise<U>,
+): Promise<Result<U, E>> {
+  return result.ok ? ok(await fn(result.value)) : result;
+}
+
+/** Async variant of `andThen`. */
+export async function andThenAsync<T, U, E>(
+  result: Result<T, E>,
+  fn: (value: T) => Promise<Result<U, E>>,
+): Promise<Result<U, E>> {
+  return result.ok ? fn(result.value) : result;
+}

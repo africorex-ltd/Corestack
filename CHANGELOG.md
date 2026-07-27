@@ -13,6 +13,16 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
 
 ### Foundation phase (pre-release)
 
+- **E02-T01…T13 kernel contract surface:** Context + correlation model,
+  versioned event envelope with serialization, EventBus port (normative
+  semantics) + in-memory bus, Logger/Cache/RateLimiter/Encrypter/UnitOfWork
+  ports with reference implementations, idempotent-consumer support, error
+  taxonomy completion (4 new `core/*` codes), Result async utilities, UUIDv7
+  generator (replacing v4 — time-ordered ids per DB rule 2), and the
+  export-surface snapshot gate. Kernel: 60 tests, zero runtime dependencies.
+  Full type-level API report deferred to pre-1.0 freeze tooling (E19-T14) —
+  recorded as the one justified deviation from E02-T13's AC.
+
 - **E01-T18 ADR batch:** the nine hard-to-reverse decisions from Architecture
   §48 codified as ADRs 0007–0015 (sessions, tenancy model, outbox, adapter
   packaging, queue default, REST-only API, plugin model, module lifecycle,

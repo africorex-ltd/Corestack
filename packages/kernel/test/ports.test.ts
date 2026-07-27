@@ -1,0 +1,182 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  CaptureLogger,
+  CryptoFailureError,
+  FixedClock,
+  InMemoryLruCache,
+  InMemoryRateLimiter,
+  NoopLogger,
+  versionedKey,
+  WebCryptoAesGcmEncrypter,
+} from "../src/index.js";
+
+describe("Logger", () => {
+  it("CaptureLogger records entries with child fields merged into a shared sink", () => {
+    const root = new CaptureLogger();
+    const child = root.child({ module: "auth", correlationId: "c1" });
+    child.info("logged in", { userId: "u1" });
+    child.child({ deep: true }).warn("nested");
+    root.error("root level");
+
+    expect(root.entries).toEqual([
+      {
+        level: "info",
+        message: "logged in",
+        fields: { module: "auth", correlationId: "c1", userId: "u1" },
+      },
+      {
+        level: "warn",
+        message: "nested",
+        fields: { module: "auth", correlationId: "c1", deep: true },
+      },
+      { level: "error", message: "root level", fields: {} },
+    ]);
+  });
+
+  it("NoopLogger swallows everything and children are itself", () => {
+    const logger = new NoopLogger();
+    expect(logger.child({ a: 1 })).toBe(logger);
+    expect(() => logger.fatal("nothing happens")).not.toThrow();
+  });
+});
+
+describe("Cache", () => {
+  it("versionedKey builds the invalidation-by-versioning scheme", () => {
+    expect(versionedKey("authz", 42, "org-1:user-2")).toBe("authz:v42:org-1:user-2");
+    expect(versionedKey("entitlements", 7n, "org-1")).toBe("entitlements:v7:org-1");
+  });
+
+  it("honors TTL deterministically", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:00Z"));
+    const cache = new InMemoryLruCache({ clock });
+    await cache.set("k", { hello: true }, 1000);
+
+    expect(await cache.get("k")).toEqual({ hello: true });
+    clock.advance(999);
+    expect(await cache.get("k")).toEqual({ hello: true });
+    clock.advance(1);
+    expect(await cache.get("k")).toBeUndefined();
+  });
+
+  it("evicts least-recently-used beyond maxEntries", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:00Z"));
+    const cache = new InMemoryLruCache({ maxEntries: 2, clock });
+    await cache.set("a", 1, 60_000);
+    await cache.set("b", 2, 60_000);
+    await cache.get("a"); // refresh a → b is now LRU
+    await cache.set("c", 3, 60_000);
+
+    expect(await cache.get("a")).toBe(1);
+    expect(await cache.get("b")).toBeUndefined();
+    expect(await cache.get("c")).toBe(3);
+  });
+
+  it("delete removes entries", async () => {
+    const cache = new InMemoryLruCache();
+    await cache.set("k", 1, 60_000);
+    await cache.delete("k");
+    expect(await cache.get("k")).toBeUndefined();
+  });
+});
+
+describe("RateLimiter", () => {
+  const policy = { limit: 3, windowMs: 60_000 };
+
+  it("allows up to the limit then denies with retryAfter", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
+    const limiter = new InMemoryRateLimiter({ clock });
+
+    expect((await limiter.consume("b", policy)).allowed).toBe(true);
+    expect((await limiter.consume("b", policy)).allowed).toBe(true);
+    const third = await limiter.consume("b", policy);
+    expect(third).toEqual({ allowed: true, limit: 3, remaining: 0, retryAfterMs: null });
+
+    const denied = await limiter.consume("b", policy);
+    expect(denied.allowed).toBe(false);
+    expect(denied.remaining).toBe(0);
+    expect(denied.retryAfterMs).toBeGreaterThan(0);
+    expect(denied.retryAfterMs).toBeLessThanOrEqual(60_000);
+  });
+
+  it("windows reset on epoch-aligned boundaries", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:59.000Z"));
+    const limiter = new InMemoryRateLimiter({ clock });
+    await limiter.consume("b", policy, 3);
+    expect((await limiter.consume("b", policy)).allowed).toBe(false);
+
+    clock.advance(1000); // crosses the minute boundary
+    expect((await limiter.consume("b", policy)).allowed).toBe(true);
+  });
+
+  it("cost consumes multiple units and never over-admits", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
+    const limiter = new InMemoryRateLimiter({ clock });
+    expect((await limiter.consume("b", policy, 2)).remaining).toBe(1);
+    expect((await limiter.consume("b", policy, 2)).allowed).toBe(false);
+    expect((await limiter.consume("b", policy, 1)).allowed).toBe(true);
+  });
+
+  it("buckets are independent", async () => {
+    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
+    const limiter = new InMemoryRateLimiter({ clock });
+    await limiter.consume("a", policy, 3);
+    expect((await limiter.consume("b", policy)).allowed).toBe(true);
+  });
+});
+
+describe("Encrypter (WebCrypto AES-256-GCM)", () => {
+  const keyA = new Uint8Array(32).fill(1);
+  const keyB = new Uint8Array(32).fill(2);
+  const plaintext = new TextEncoder().encode("totp-seed-material");
+
+  it("round-trips and uses the current key id", async () => {
+    const encrypter = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
+    const encrypted = await encrypter.encrypt(plaintext);
+
+    expect(encrypted.keyId).toBe("k1");
+    expect(encrypted.iv).toHaveLength(12);
+    expect(await encrypter.decrypt(encrypted)).toEqual(plaintext);
+  });
+
+  it("rotation: old key still decrypts, new encrypts under new id", async () => {
+    const before = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
+    const legacy = await before.encrypt(plaintext);
+
+    const after = await WebCryptoAesGcmEncrypter.create(
+      new Map([
+        ["k1", keyA],
+        ["k2", keyB],
+      ]),
+      "k2",
+    );
+    expect(await after.decrypt(legacy)).toEqual(plaintext);
+    expect((await after.encrypt(plaintext)).keyId).toBe("k2");
+  });
+
+  it("tampered ciphertext fails without detail", async () => {
+    const encrypter = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
+    const encrypted = await encrypter.encrypt(plaintext);
+    const tampered = new Uint8Array(encrypted.ciphertext);
+    tampered[0] = (tampered[0] as number) ^ 0xff;
+
+    await expect(encrypter.decrypt({ ...encrypted, ciphertext: tampered })).rejects.toThrow(
+      CryptoFailureError,
+    );
+  });
+
+  it("unknown key id and bad key material are rejected", async () => {
+    const encrypter = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
+    const encrypted = await encrypter.encrypt(plaintext);
+    await expect(encrypter.decrypt({ ...encrypted, keyId: "ghost" })).rejects.toThrow(
+      CryptoFailureError,
+    );
+
+    await expect(
+      WebCryptoAesGcmEncrypter.create(new Map([["short", new Uint8Array(16)]]), "short"),
+    ).rejects.toThrow(CryptoFailureError);
+    await expect(
+      WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "missing"),
+    ).rejects.toThrow(CryptoFailureError);
+  });
+});

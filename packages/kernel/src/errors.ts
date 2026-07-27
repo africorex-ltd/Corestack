@@ -51,6 +51,26 @@ export class ForbiddenError extends CoreError {
   readonly code = "core/forbidden";
 }
 
+/** The caller exceeded a rate limit; `metadata.retryAfterMs` when known. */
+export class RateLimitedError extends CoreError {
+  readonly code = "core/rate_limited";
+}
+
+/** The request payload exceeds a configured size/depth bound. */
+export class PayloadTooLargeError extends CoreError {
+  readonly code = "core/payload_too_large";
+}
+
+/** A required precondition (e.g. recent authentication) is not satisfied. */
+export class PreconditionFailedError extends CoreError {
+  readonly code = "core/precondition_failed";
+}
+
+/** Encryption/decryption failure. Deliberately detail-free messages. */
+export class CryptoFailureError extends CoreError {
+  readonly code = "core/crypto_failure";
+}
+
 export function isCoreError(value: unknown): value is CoreError {
   return value instanceof CoreError;
 }
