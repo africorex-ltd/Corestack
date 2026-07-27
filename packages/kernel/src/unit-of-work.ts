@@ -8,6 +8,10 @@
  *   transaction** as the state changes (real adapters: the outbox table)
  *   and dispatched only after commit; if `work` throws, both the writes
  *   and the staged events are discarded.
+ * - **Consumer failures never fail the producer** (AUD-03): once `work`
+ *   has committed, the use case has succeeded — dispatch/consumer errors
+ *   are an observability concern (relay retries, dead-letters), never a
+ *   use-case error. Implementations must isolate them.
  * - Nesting is not supported (a use case is the transaction boundary).
  */
 
@@ -23,6 +27,16 @@ export interface UnitOfWork {
   run<T>(work: (tx: TransactionContext) => Promise<T>): Promise<T>;
 }
 
+export interface InMemoryUnitOfWorkOptions {
+  /**
+   * Observer for after-commit dispatch failures (typically an
+   * `AggregateError` from the in-memory bus). Defaults to swallowing —
+   * matching production, where the outbox relay owns retries and the
+   * producer never sees consumer errors.
+   */
+  readonly onDispatchError?: (error: unknown, events: readonly DomainEvent[]) => void;
+}
+
 /**
  * Reference implementation for tests and non-durable composition: staged
  * events are dispatched to the bus after `work` resolves and discarded if it
@@ -30,9 +44,11 @@ export interface UnitOfWork {
  */
 export class InMemoryUnitOfWork implements UnitOfWork {
   readonly #bus: EventBus;
+  readonly #onDispatchError: InMemoryUnitOfWorkOptions["onDispatchError"];
 
-  constructor(bus: EventBus) {
+  constructor(bus: EventBus, options: InMemoryUnitOfWorkOptions = {}) {
     this.#bus = bus;
+    this.#onDispatchError = options.onDispatchError;
   }
 
   async run<T>(work: (tx: TransactionContext) => Promise<T>): Promise<T> {
@@ -43,7 +59,11 @@ export class InMemoryUnitOfWork implements UnitOfWork {
       },
     };
     const result = await work(tx);
-    await this.#bus.publish(staged);
+    try {
+      await this.#bus.publish(staged);
+    } catch (error) {
+      this.#onDispatchError?.(error, staged);
+    }
     return result;
   }
 }

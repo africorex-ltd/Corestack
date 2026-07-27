@@ -57,7 +57,7 @@ export { InMemoryRateLimiter } from "./rate-limiter.js";
 export type { EncryptedValue, Encrypter } from "./encrypter.js";
 export { WebCryptoAesGcmEncrypter } from "./encrypter.js";
 
-export type { TransactionContext, UnitOfWork } from "./unit-of-work.js";
+export type { TransactionContext, UnitOfWork, InMemoryUnitOfWorkOptions } from "./unit-of-work.js";
 export { InMemoryUnitOfWork } from "./unit-of-work.js";
 
 export type { ProcessedEventStore } from "./processed-events.js";
