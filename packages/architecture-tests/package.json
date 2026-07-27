@@ -1,0 +1,13 @@
+{
+  "name": "@corestack/architecture-tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Architecture fitness tests: layer rules, dependency cycles, cross-package boundaries, manifest/ADR compliance. Never published; always in CI.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
