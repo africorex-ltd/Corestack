@@ -1,85 +1,37 @@
-# CoreStack Architecture Overview
+# CoreStack Architecture — 5-Minute Overview
 
-CoreStack is a **modular monolith**: a single deployable composed of independently
-versioned modules, each owning one bounded context (auth, tenancy, billing, …).
-Modules are npm packages under `packages/`, published under the `@corestack/*` scope.
+> Thin, dated summary (2026-07-28). **The normative source is
+> [ARCHITECTURE.md](ARCHITECTURE.md)** — 48 sections, every decision with its
+> reasoning — plus [DATABASE.md](DATABASE.md), [API.md](API.md), and the
+> [ADRs](../adr/README.md). If this page and those disagree, they win (and
+> file a docs bug).
 
-The decisions summarized here are recorded individually in [../adr/](../adr/).
+CoreStack is a **modular monolith delivered as a library platform**: versioned
+`@corestack/*` packages composed inside _your_ application process, over _your_
+PostgreSQL. There is no CoreStack server or control plane to operate — that is
+the structural form of the no-lock-in promise.
 
-## The dependency rule
+**The five load-bearing ideas:**
 
-Every module is layered the same way, and **source dependencies only point inward**:
+1. **Clean Architecture per module** — `domain → application → infrastructure/
+interface`, dependencies point inward, vendors exist only behind ports.
+   Machine-enforced by lint zones and the architecture fitness suite.
+2. **Events over imports** — modules never import each other; they consume
+   published, versioned domain events through a **transactional outbox**
+   (ADR-0009), which is what makes audit/webhooks/notifications
+   complete-by-construction and any-subset composition work.
+3. **Pooled multi-tenancy, enforced four times** (ADR-0008) — org-id-required
+   port signatures, server-resolved context, Postgres RLS backstop, and an
+   unskippable cross-tenant isolation suite in CI.
+4. **Opaque server-side sessions** (ADR-0007) — revocation is a `DELETE`,
+   not a cache-expiry prayer.
+5. **Node + Postgres is enough** — queue, rate limiting, and eventing default
+   to Postgres-backed adapters; Redis and friends are opt-in swaps behind
+   contract-tested ports.
 
-```
-┌────────────────────────────────────────────────────────┐
-│ interface     HTTP handlers, CLI commands, jobs        │
-│   │                                                    │
-│   ▼                                                    │
-│ application   use cases, ports (interfaces), DTOs      │
-│   │                                                    │
-│   ▼                                                    │
-│ domain        entities, value objects, domain events,  │
-│               invariants — zero external dependencies  │
-│   ▲                                                    │
-│   │ implements ports                                   │
-│ infrastructure  Postgres repos, email, Stripe, queues  │
-└────────────────────────────────────────────────────────┘
-```
-
-- **domain** knows nothing about databases, HTTP, or other modules' internals.
-- **application** orchestrates domain objects behind _ports_ — plain TypeScript
-  interfaces such as `UserRepository` or `MailSender`.
-- **infrastructure** provides adapters that implement those ports (e.g.
-  `PostgresUserRepository`). Swapping Postgres for another store means writing a new
-  adapter, not touching use cases.
-- **interface** translates transport concerns (HTTP, CLI, queue messages) into use
-  case invocations. It never contains business rules.
-
-## Cross-module communication
-
-Modules never import each other's domain internals. They interact through:
-
-1. **Public application APIs** — the use cases a module exports.
-2. **Domain events** — published on an in-process event bus port; e.g. `tenancy`
-   emits `member.removed`, `audit` subscribes. This keeps modules decoupled and makes
-   the eventual extraction of a module into a service a mechanical change, not a
-   redesign.
-
-## The kernel
-
-`@corestack/kernel` is the one shared dependency every module may use. It contains
-only cross-cutting building blocks with no business meaning:
-
-- `Result<T, E>` — explicit, typed error handling for expected failures
-- The `CoreError` taxonomy — stable error codes that map cleanly to transport errors
-- Ports for ambient effects: `Clock`, `IdGenerator`
-- (next) `EventBus` port and domain event contracts
-
-The kernel must stay small. If something in it starts to acquire business meaning,
-it belongs in a module instead.
-
-## Error handling convention
-
-- **Expected failures** (validation, not-found, conflicts, permission denials) are
-  values: use cases return `Result<T, CoreError>`. Callers must handle them; the
-  type system enforces it.
-- **Unexpected failures** (bugs, infrastructure outages) throw. They are caught at
-  the interface boundary, logged, and mapped to a generic 500-class response — never
-  leaked to clients.
-
-## Security posture
-
-- Multi-tenancy isolation is enforced in the application layer on every query path;
-  tenant id is part of every repository port method that touches tenant-owned data.
-- Secrets and tokens are stored hashed; raw values exist only in memory at issuance.
-- All input crossing a trust boundary is validated with Zod schemas before it
-  reaches a use case.
-
-## Repository layout
-
-```
-packages/          @corestack/* modules (kernel, auth, tenancy, …)
-apps/              reference applications (planned: Next.js starter)
-docs/adr/          Architecture Decision Records
-docs/architecture/ this document and deeper design notes
-```
+**Current state:** kernel contract surface complete (Result, errors, Context,
+events, and the EventBus/Logger/Cache/RateLimiter/Encrypter/UnitOfWork ports
+with reference implementations); modules land per the
+[engineering blueprint](../engineering/00-OVERVIEW.md) — tenancy and auth
+first (M1). Quality is governed continuously: see
+[docs/quality/dashboard.md](../quality/dashboard.md).
