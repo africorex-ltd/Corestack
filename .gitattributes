@@ -1,0 +1,7 @@
+# Normalize all text to LF in the repository (matches .editorconfig).
+* text=auto eol=lf
+
+# Binary-safe by default via text=auto; explicit binaries:
+*.png binary
+*.jpg binary
+*.woff2 binary

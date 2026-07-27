@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/corestack/corestack/security/advisories/new
+    about: Never open a public issue for security problems. Use private reporting — see SECURITY.md.
+  - name: 💬 Questions & support
+    url: https://github.com/corestack/corestack/discussions/categories/support
+    about: Ask usage questions in Discussions. Issues are for confirmed bugs and planned work.
+  - name: 💡 Design proposals (RFC)
+    url: https://github.com/corestack/corestack/discussions/categories/rfc
+    about: Substantial features start as an RFC discussion before an issue exists.

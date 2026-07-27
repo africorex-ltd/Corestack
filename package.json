@@ -1,0 +1,35 @@
+{
+  "name": "corestack",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:versions": "node tooling/scripts/check-single-version.mjs",
+    "changeset": "changeset"
+  },
+  "prettier": "@corestack/prettier-config",
+  "devDependencies": {
+    "@changesets/cli": "^2.29.5",
+    "@corestack/eslint-config": "workspace:*",
+    "@corestack/prettier-config": "workspace:*",
+    "eslint": "^9.30.0",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

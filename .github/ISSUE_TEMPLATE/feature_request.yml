@@ -1,0 +1,52 @@
+name: 💡 Feature request
+description: Propose an addition or change to CoreStack
+title: "feat: "
+labels: ["type:feature", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: (1) check the [roadmap](../../docs/ROADMAP.md) and existing
+        issues; (2) **substantial features** (new module, new port, public-API
+        change) start as an [RFC discussion](../../docs/rfc/), not an issue —
+        maintainers will convert accepted RFCs into issues. This template is for
+        scoped improvements within existing modules.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, and who hits this? (Persona/context helps prioritization.)
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see. API sketches welcome. Note which module/package.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including "solve it in adopter code" — why isn't that enough?
+    validations:
+      required: true
+  - type: dropdown
+    id: scope-check
+    attributes:
+      label: Scope check
+      description: The vision's out-of-scope list (VISION.md §9) is enforced. Where does this sit?
+      options:
+        - Within an existing module's scope
+        - New capability for an existing module
+        - "New module / port (expect to be asked for an RFC)"
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to implement this with maintainer guidance

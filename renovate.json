@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", "group:monorepos"],
+  "schedule": ["before 6am on monday"],
+  "labels": ["type:task", "area:ci"],
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 6am on monday"] },
+  "packageRules": [
+    {
+      "description": "Toolchain moves together (single-version policy)",
+      "groupName": "toolchain",
+      "matchPackageNames": [
+        "typescript",
+        "eslint",
+        "prettier",
+        "vitest",
+        "turbo",
+        "/^typescript-eslint/",
+        "/^@eslint//"
+      ]
+    },
+    {
+      "description": "GitHub Actions pinned and grouped",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "pinDigests": true
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+# Engineering Blueprint — Interface Surface (M1 + M4)
+
+Epics E14 (HTTP Interface & API Standards — split-phase: F14.1–F14.3 in M1,
+F14.4–F14.5 in M4), E15 (CLI), E16 (Client SDK).
+Design sources: API document (all sections); Architecture §25–29.
+
+---
+
+## E14 — HTTP Interface & API Standards `@corestack/http` (M1/M4, 26 tasks, ~38d)
+
+**Goal:** the shared interface-layer toolkit every module's bindings build on —
+standards enforced as code, not convention.
+
+### F14.1 Request Pipeline (M1)
+
+| ID      | Task — Description                                                                                                          | Cat | Pri | Deps             | Cx/Est | Acceptance criteria & subtasks                                                                                                                                |
+| ------- | --------------------------------------------------------------------------------------------------------------------------- | --- | --- | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E14-T01 | Transport-neutral route definition format + Hono binding — routes declared once, bound to Hono; Next.js binding later (T20) | API | P0  | E03-T21          | L/3d   | Fixture module's routes bound + served; binding layer < thin (no logic) verified by review. Sub: .1 route def format; .2 Hono adapter; .3 mount/prefix config |
+| E14-T02 | Context middleware — session/API-key resolution → `Context` (E03-T32 impl), org-membership verification for `{orgId}` paths | API | P0  | T01, E06-T19/T29 | M/2d   | Forged-org test fails closed; Context reaches use cases intact                                                                                                |
+| E14-T03 | Boundary validation pipeline — Zod parse, strict unknown-field rejection (422), size/depth caps (API §19)                   | API | P0  | T01              | M/2d   | Unknown field → 422 with path; 1 MiB cap; depth-bomb rejected cheaply                                                                                         |
+| E14-T04 | CSRF defense — custom-header requirement + Origin allowlist for cookie-authed unsafe methods (API §19)                      | SEC | P0  | T02              | M/2d   | Matrix tested: cookie×header×origin combinations; bearer path exempt                                                                                          |
+| E14-T05 | Problem-details error mapper — CoreError code → RFC 9457 body + status table (API §21); code registry module                | API | P0  | T01              | M/2d   | One mapping table; unexpected errors → generic 500, internals only in logs (snapshot test); registry doc generated                                            |
+| E14-T06 | Request-id + correlation propagation — accept/generate `X-Request-Id`, echo, bind into Context/logs (API §19–20)            | API | P0  | T02              | S/1d   | Id present in response, logs, and downstream events (trace test)                                                                                              |
+| E14-T07 | Rate-limit middleware — bucket resolution (IP/user/key/org), IETF headers, 429 mapping (API §17)                            | API | P0  | T02, E02-T08     | M/2d   | Headers on every response; per-email auth buckets wired in E06 bindings                                                                                       |
+
+### F14.2 Response Toolkit (M1)
+
+| ID      | Task — Description                                                                                                                                    | Cat | Pri | Deps         | Cx/Est  | Acceptance criteria & subtasks                                           |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --- | --- | ------------ | ------- | ------------------------------------------------------------------------ |
+| E14-T08 | Pagination toolkit — opaque signed cursors encoding (sortKey,id), `{data,pagination}` envelope, limit clamping (API §22)                              | API | P0  | T01          | M/2d    | Cursor tamper → 422; sort folded into cursor; property test round-trip   |
+| E14-T09 | Filter/sort allowlist toolkit — typed per-endpoint declarations feeding validation + OpenAPI                                                          | API | P0  | T08          | S/1d    | Unlisted filter param → 422; repeat-param OR-sets                        |
+| E14-T10 | Response standards toolkit — status helpers (201+Location, 202, 204), `Cache-Control: no-store` default, ETag/304 for version-stamped reads (API §20) | API | P0  | T01          | M/2d    | ETag flow tested on fixture; no-store verified default                   |
+| E14-T11 | Idempotency-Key middleware — store/replay/conflict via E03-T43 (API §21)                                                                              | API | P0  | T05, E03-T43 | M/2d    | Replay header set; different-body conflict; concurrent duplicate blocked |
+| E14-T12 | Health endpoints binding — liveness/readiness from E03-T23                                                                                            | API | P1  | T01          | XS/0.5d | Standard shape                                                           |
+| E14-T13 | Interface toolkit docs — binding-author guide (module teams are the audience)                                                                         | DOC | P0  | T01–T11      | M/2d    | E05-T24 authored against this guide validates it                         |
+
+### F14.3 Hardening (M1)
+
+| ID      | Task — Description                                                                               | Cat | Pri | Deps | Cx/Est | Acceptance criteria & subtasks                               |
+| ------- | ------------------------------------------------------------------------------------------------ | --- | --- | ---- | ------ | ------------------------------------------------------------ |
+| E14-T14 | Proxy-trust configuration — explicit `trustProxy`, client-IP derivation rules (Architecture §25) | SEC | P0  | T07  | S/1d   | Spoofed XFF without trust → ignored (rate-limit bypass test) |
+| E14-T15 | Security headers pack — HSTS advice, no-sniff, frame-deny defaults documented+applied at binding | SEC | P1  | T01  | S/1d   | Headers present; adopter override doc                        |
+| E14-T16 | Binding fuzz pass — cursor decoder + problem mapper corpus (E04-T15)                             | SEC | P1  | T08  | S/1d   | Nightly lane                                                 |
+
+### F14.4 OpenAPI Generation (M4)
+
+| ID      | Task — Description                                                                                                    | Cat | Pri | Deps     | Cx/Est | Acceptance criteria & subtasks                                                                                                                                       |
+| ------- | --------------------------------------------------------------------------------------------------------------------- | --- | --- | -------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E14-T17 | Zod→OpenAPI 3.1 generator — per-module spec emission with x-extensions (permission, stability, error-codes) (API §23) | API | P0  | T03, T05 | L/4d   | Spec validates against 3.1 meta-schema; every operation has example + operationId `module.useCase`. Sub: .1 schema conversion; .2 x-extensions; .3 examples pipeline |
+| E14-T18 | Spec merge tooling — compose installed modules' specs incl. `/x/` third-party namespace (CLI-consumed)                | API | P0  | T17      | M/2d   | Merged spec for reference-app composition validates; collision detection                                                                                             |
+| E14-T19 | Spec release artifact + diff-changelog — semver'd spec shipped per release; spec-diff feeds API changelog (API §23)   | REL | P1  | T18      | M/2d   | Release contains spec; diff rendered in changelog PR                                                                                                                 |
+| E14-T20 | Next.js binding — second reference binding proving transport-neutrality (Architecture §10)                            | API | P1  | T01      | L/3d   | Same route defs serve under App Router route handlers; binding contract tests shared with Hono                                                                       |
+
+### F14.5 API Conformance (M4)
+
+| ID      | Task — Description                                                                                                                                        | Cat | Pri | Deps           | Cx/Est | Acceptance criteria & subtasks                                                            |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | --- | -------------- | ------ | ----------------------------------------------------------------------------------------- |
+| E14-T21 | API conformance suite — machine checks of API-doc standards over the merged spec (naming, pagination shape, error codes registered, x-permission present) | TST | P0  | T18            | M/2d   | Violations fail CI; suite is the API doc's enforcement arm                                |
+| E14-T22 | Deprecation tooling — `Deprecation`/`Sunset` header support + registry (API §18)                                                                          | API | P2  | T05            | S/1d   | Headers emitted from declaration                                                          |
+| E14-T23 | Versioned-mount support — `/v1` prefix strategy + dual-major scaffolding note (API §18)                                                                   | API | P1  | T01            | S/1d   | Prefix configurable; /v2 dry-run doc                                                      |
+| E14-T24 | Endpoint reference generation — docs-site pages from merged spec (feeds E18)                                                                              | DOC | P0  | T18            | M/2d   | Generated pages build in docs pipeline                                                    |
+| E14-T25 | Public API review gate — checklist making stability-tier changes an explicit review step                                                                  | INF | P1  | T21            | S/1d   | CI labels PRs touching stable surface                                                     |
+| E14-T26 | E2E golden-journey suite — register→org→invite→role→subscribe→audit through real HTTP (Architecture §44.4; M4 exit)                                       | TST | P0  | all M3 modules | L/4d   | Journey green in CI against composed app. Sub: .1 harness; .2 journey specs; .3 CI wiring |
+
+---
+
+## E15 — CLI `@corestack/cli` (M4, 16 tasks, ~22d)
+
+**Goal:** operator convenience over module APIs — never the only way
+(Architecture §29).
+
+| ID      | Task — Description                                                                                                                             | Cat | Pri | Deps         | Cx/Est  | Acceptance criteria & subtasks                                                                                                      |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --- | --- | ------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| E15-T01 | CLI skeleton — command framework, `--json` default machine output, TTY-only interactivity, exit-code discipline                                | APP | P0  | E03-T22      | M/2d    | Non-TTY never prompts; JSON mode snapshot-tested                                                                                    |
+| E15-T02 | `corestack migrate` — compose+apply module migrations (E03-T02 front-end): status/up/verify subcommands                                        | APP | P0  | T01, E03-T02 | M/2d    | Platform-first ordering; drift → actionable failure; `--dry-run` prints plan                                                        |
+| E15-T03 | `corestack doctor` — config validation, connectivity, pending migrations, RLS-role sanity, retired-permission grants, common misconfig catalog | APP | P0  | T01          | L/3d    | Each check: pass/warn/fail + fix hint; catalog seeded with 10 real failure modes. Sub: .1 framework; .2 checks; .3 fix-hint catalog |
+| E15-T04 | `corestack init` — scaffold composition root + env template from selected modules                                                              | APP | P0  | T01, E03-T21 | M/2d    | Generated project boots + passes doctor; module selection non-interactive via flags                                                 |
+| E15-T05 | `corestack generate openapi` — merged spec emission (E14-T18 front-end)                                                                        | APP | P0  | T01, E14-T18 | S/1d    | Spec written; validates                                                                                                             |
+| E15-T06 | `corestack generate client` — typed client generation front-end (E16 pipeline)                                                                 | APP | P1  | T05, E16-T02 | S/1d    | Client compiles in fixture                                                                                                          |
+| E15-T07 | `corestack dev seed` — seed profiles apply (E04-T10)                                                                                           | APP | P1  | T01          | S/1d    | dev profile seeds reference app                                                                                                     |
+| E15-T08 | `corestack partition maintain` — partition create-ahead/retention front-end (E03-T03) fallback for non-pg_partman                              | APP | P1  | T01, E03-T03 | S/1d    | Idempotent; checkpoint-safe drops                                                                                                   |
+| E15-T09 | `corestack doctor --verify-restore` — post-restore coherence checks (DB §19)                                                                   | APP | P1  | T03          | M/2d    | Detects checkpoint/schema incoherence in a corrupted fixture                                                                        |
+| E15-T10 | Secrets hygiene — CLI never echoes secret config; redaction in all output paths                                                                | SEC | P0  | T03          | S/1d    | Snapshot audit of all outputs with seeded secrets                                                                                   |
+| E15-T11 | CLI e2e suite — commands run against composed fixture app in CI                                                                                | TST | P0  | T02–T08      | M/2d    | All commands exercised; `--json` contracts frozen                                                                                   |
+| E15-T12 | CLI reference docs — generated from command definitions                                                                                        | DOC | P0  | T11          | S/1d    | Generated, not hand-written (drift-proof)                                                                                           |
+| E15-T13 | CLI packaging — bin wiring, Node engines check with friendly failure, startup < 500 ms                                                         | REL | P0  | T01          | S/1d    | Cold-start budget in CI                                                                                                             |
+| E15-T14 | `corestack upgrade` advisor — pending-migration + breaking-change preflight between installed and target versions                              | APP | P2  | T02, E01-T17 | M/2d    | Reads compat table; prints ordered upgrade plan                                                                                     |
+| E15-T15 | Shell completion — bash/zsh/fish emitters                                                                                                      | APP | P3  | T01          | S/1d    | Generated from command tree                                                                                                         |
+| E15-T16 | CLI 0.1 release                                                                                                                                | REL | P0  | T11–T13      | XS/0.5d | Published                                                                                                                           |
+
+---
+
+## E16 — Client SDK `@corestack/client` (M4, 18 tasks, ~26d)
+
+**Goal:** generated typed HTTP client encoding the API document's contracts so
+humans don't re-implement them (API §24).
+
+| ID      | Task — Description                                                                                                      | Cat | Pri | Deps         | Cx/Est  | Acceptance criteria & subtasks                                                                                              |
+| ------- | ----------------------------------------------------------------------------------------------------------------------- | --- | --- | ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| E16-T01 | Generator architecture note — codegen pipeline from merged OpenAPI, operationId→method naming, zero-runtime-deps target | DOC | P0  | E14-T18      | S/1d    | Reviewed before build (design-first)                                                                                        |
+| E16-T02 | Core generation pipeline — types + methods from spec; fetch-based transport; browser+Node single package                | APP | P0  | T01          | L/4d    | Generated client for M1 modules compiles strict; tree-shakeable per module. Sub: .1 type emit; .2 method emit; .3 transport |
+| E16-T03 | Typed error union — code registry → discriminated errors (`e.code === "tenancy/sole_owner"` narrows)                    | APP | P0  | T02, E14-T05 | M/2d    | Every registered code represented; unknown-code forward-compat case                                                         |
+| E16-T04 | Auth plumbing — cookie mode (CSRF header injection) + bearer mode (API §15); session bootstrap helper                   | APP | P0  | T02          | M/2d    | Mode-appropriate behavior matrix tested                                                                                     |
+| E16-T05 | Step-up interception — `auth/step_up_required` → adopter callback → transparent replay (API §3.1/§24)                   | APP | P0  | T03, T04     | M/2d    | Replay preserves original request exactly (incl. idempotency key)                                                           |
+| E16-T06 | Rate-limit pacing + retries — header-aware pacing, jittered retry on idempotent calls only, Retry-After honor           | APP | P0  | T02          | M/2d    | Non-idempotent never auto-retried (test); pacing under 429 storm                                                            |
+| E16-T07 | Idempotency-Key automation — auto-mint on required mutations, expose override                                           | APP | P0  | T02          | S/1d    | Key stable across internal retries                                                                                          |
+| E16-T08 | Cursor iteration helpers — `iterate()` async generators per list op                                                     | APP | P1  | T02          | S/1d    | Backpressure-friendly; stops on hasMore=false                                                                               |
+| E16-T09 | ETag/304 handling — conditional-read support for version-stamped endpoints                                              | APP | P2  | T02          | S/1d    | my-permissions flow round-trips 304                                                                                         |
+| E16-T10 | Unknown-field tolerance — response parsing ignores unknown fields (API §18) with strict-mode opt-in for tests           | APP | P0  | T02          | S/1d    | Forward-compat test: spec+1-field still parses                                                                              |
+| E16-T11 | Webhook receiver-verify helper — E12-T14 helper shipped under `/webhooks` subpath                                       | APP | P0  | E12-T14      | S/1d    | Vectors pass; framework-neutral                                                                                             |
+| E16-T12 | SDK contract suite — generated client vs live fixture app: every operation round-trips                                  | TST | P0  | T02–T07      | L/3d    | Full-surface pass in CI; failures name operationId                                                                          |
+| E16-T13 | Bundle budget — size gate per module chunk; zero-dependency check                                                       | INF | P1  | T02          | S/1d    | Budget in CI; violation fails                                                                                               |
+| E16-T14 | SDK docs — getting started (browser + Node), error handling, step-up integration recipe                                 | DOC | P0  | T12          | M/2d    | Recipes compile in docs CI                                                                                                  |
+| E16-T15 | React hooks package design note — thin layer scope for post-M4 (`@corestack/react`), deliberately deferred              | DOC | P3  | T14          | S/1d    | RFC draft filed                                                                                                             |
+| E16-T16 | SDK 0.1 release                                                                                                         | REL | P0  | T12–T14      | XS/0.5d | Published                                                                                                                   |
+| E16-T17 | Python/Go generation feasibility spike — same-pipeline viability check (vision §15), timeboxed                          | APP | P3  | T02          | M/2d    | Findings doc; no commitment                                                                                                 |
+| E16-T18 | SDK conformance in E2E — golden journeys (E14-T26) re-run through the SDK                                               | TST | P1  | T12, E14-T26 | M/2d    | Same journeys green via client — SDK and raw HTTP provably equivalent                                                       |

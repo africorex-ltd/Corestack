@@ -1,0 +1,40 @@
+name: 🔧 Blueprint task
+description: "Maintainers only: an engineering task from the blueprint (docs/engineering/)"
+title: "[Exx-Tnn] "
+labels: ["type:task", "status:ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For tasks tracked in the engineering blueprint. Title format:
+        `[E05-T14] ListMembers use case`. The blueprint row is the source of
+        truth; this issue carries scheduling state.
+  - type: input
+    id: task-id
+    attributes:
+      label: Blueprint Task ID
+      placeholder: "E05-T14"
+    validations:
+      required: true
+  - type: input
+    id: blueprint-link
+    attributes:
+      label: Blueprint file & section
+      placeholder: "docs/engineering/02-identity.md → F5.3"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria (copied from blueprint + any refinements)
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Dependencies (task IDs / issue links)
+  - type: textarea
+    id: notes
+    attributes:
+      label: Implementation notes
+      description: Discoveries, decisions, links to design docs. Category standards (00-OVERVIEW §4) apply implicitly.

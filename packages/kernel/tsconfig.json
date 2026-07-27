@@ -1,0 +1,4 @@
+{
+  "extends": "@corestack/tsconfig/library.json",
+  "include": ["src", "test"]
+}

@@ -1,0 +1,15 @@
+# Review routing (CONTRIBUTING.md § Code review policy).
+# Team names are placeholders until the GitHub org exists (08-github-project.md §1);
+# effective enforcement starts at repo creation.
+
+* @corestack/core-maintainers
+
+# Security-critical paths: two approvals, one from the security rotation.
+/packages/kernel/               @corestack/security-rotation @corestack/core-maintainers
+/packages/auth/                 @corestack/security-rotation @corestack/core-maintainers
+/tooling/eslint/                @corestack/core-maintainers
+/.github/workflows/             @corestack/security-rotation @corestack/core-maintainers
+/.changeset/config.json         @corestack/core-maintainers
+/docs/adr/                      @corestack/core-maintainers
+/GOVERNANCE.md                  @corestack/core-maintainers
+/SECURITY.md                    @corestack/security-rotation

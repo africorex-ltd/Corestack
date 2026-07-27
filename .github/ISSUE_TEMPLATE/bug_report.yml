@@ -1,0 +1,61 @@
+name: 🐛 Bug report
+description: A reproducible defect in a CoreStack package
+title: "bug: "
+labels: ["type:bug", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security issues must NOT be filed here** — use
+        private reporting (see SECURITY.md). Bugs without a reproduction are
+        usually unactionable; the minimal-repro field is required for a reason.
+  - type: input
+    id: packages
+    attributes:
+      label: Affected package(s) and version(s)
+      placeholder: "@corestack/auth 0.3.2"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, OS, PostgreSQL version, deployment shape (web/worker)
+      placeholder: "Node 22.4, Ubuntu 24.04, Postgres 16 (Neon), single node"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full error output / problem+json body / log lines (redact secrets and PII).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest composition + steps that reproduce it. A repo link or a failing test is ideal.
+    validations:
+      required: true
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Is this a regression?
+      options:
+        - Unknown
+        - "Yes — worked in a previous version (state which below)"
+        - "No — never worked"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Workarounds found, suspected cause, related issues.
