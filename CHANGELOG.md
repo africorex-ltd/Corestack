@@ -13,6 +13,15 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
 
 ### Foundation phase (pre-release)
 
+- **E01-T18 ADR batch:** the nine hard-to-reverse decisions from Architecture
+  §48 codified as ADRs 0007–0015 (sessions, tenancy model, outbox, adapter
+  packaging, queue default, REST-only API, plugin model, module lifecycle,
+  upgrade contract); ADR-0013 carries the scaffold-prompt reconciliation note.
+- **E01-T02 boundary-rule hardening:** permanent fixture test suite (11 cases)
+  proving every layer-boundary zone fires and doesn't overfire; new
+  sensitive-log deny-list rule (credential-bearing fields banned in logger
+  metadata); rules documented in `tooling/eslint/README.md`.
+
 - **Repository skeleton & remote:** initial commit pushed to
   `africorex-ltd/Corestack`; visible placeholder folders (purpose READMEs
   only, no workspace membership) added for all approved packages, apps, and

@@ -4,14 +4,23 @@ Every foundational or hard-to-reverse decision in CoreStack is recorded here.
 ADRs are immutable once accepted; a change of direction gets a _new_ ADR that
 supersedes the old one.
 
-| ADR                                                 | Title                                                        | Status   |
-| --------------------------------------------------- | ------------------------------------------------------------ | -------- |
-| [0001](0001-typescript-on-nodejs.md)                | TypeScript on Node.js, ESM-only                              | Accepted |
-| [0002](0002-pnpm-turborepo-monorepo.md)             | pnpm workspaces + Turborepo monorepo                         | Accepted |
-| [0003](0003-modular-monolith-clean-architecture.md) | Modular monolith with Clean Architecture layering            | Accepted |
-| [0004](0004-postgresql-behind-repository-ports.md)  | PostgreSQL as reference persistence, behind repository ports | Accepted |
-| [0005](0005-zod-boundary-validation.md)             | Zod validation at trust boundaries                           | Accepted |
-| [0006](0006-mit-license.md)                         | MIT license                                                  | Accepted |
+| ADR                                                    | Title                                                        | Status   |
+| ------------------------------------------------------ | ------------------------------------------------------------ | -------- |
+| [0001](0001-typescript-on-nodejs.md)                   | TypeScript on Node.js, ESM-only                              | Accepted |
+| [0002](0002-pnpm-turborepo-monorepo.md)                | pnpm workspaces + Turborepo monorepo                         | Accepted |
+| [0003](0003-modular-monolith-clean-architecture.md)    | Modular monolith with Clean Architecture layering            | Accepted |
+| [0004](0004-postgresql-behind-repository-ports.md)     | PostgreSQL as reference persistence, behind repository ports | Accepted |
+| [0005](0005-zod-boundary-validation.md)                | Zod validation at trust boundaries                           | Accepted |
+| [0006](0006-mit-license.md)                            | MIT license                                                  | Accepted |
+| [0007](0007-opaque-server-side-sessions.md)            | Opaque server-side sessions, not stateless JWTs              | Accepted |
+| [0008](0008-pooled-multi-tenancy.md)                   | Pooled multi-tenancy with layered enforcement                | Accepted |
+| [0009](0009-transactional-outbox-no-event-sourcing.md) | Transactional outbox for events; no event sourcing           | Accepted |
+| [0010](0010-adapters-as-subpath-exports.md)            | Reference adapters as subpath exports                        | Accepted |
+| [0011](0011-postgres-backed-queue-default.md)          | Postgres-backed job queue as reference default               | Accepted |
+| [0012](0012-rest-only-core-api.md)                     | REST-only core API; GraphQL as community binding             | Accepted |
+| [0013](0013-modules-are-the-plugin-system.md)          | Modules are the plugin system; no runtime loading            | Accepted |
+| [0014](0014-module-lifecycle-contract.md)              | Uniform module lifecycle contract                            | Accepted |
+| [0015](0015-zero-downtime-upgrade-contract.md)         | Zero-downtime N/N+1 upgrade contract                         | Accepted |
 
 ## Writing an ADR
 
