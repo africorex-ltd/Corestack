@@ -117,6 +117,29 @@ describe("ensureOutboxSchema (E03-T10 integration)", () => {
     ).rejects.toThrow();
   });
 
+  it("partition bounds are correct regardless of the bootstrapping session's TimeZone", async () => {
+    const reserved = await sql.reserve();
+    try {
+      // A bare date literal in a partition bound is parsed using the DDL
+      // session's TimeZone, not UTC. Bootstrapping under a non-UTC zone
+      // reproduces the bug this test guards: without the explicit +00:00
+      // offset in computeMonthlyPartitionBounds, an event at the first
+      // hour of the UTC month would find no covering partition.
+      await reserved.unsafe(`SET TimeZone = 'America/New_York'`);
+      await ensureOutboxSchema(reserved, { referenceDate: new Date("2026-07-15T00:00:00Z") });
+
+      await expect(
+        reserved`INSERT INTO platform.outbox ${reserved(sampleRow("2026-07-01T01:00:00Z"))}`,
+      ).resolves.toBeDefined();
+      await expect(
+        reserved`INSERT INTO platform.outbox ${reserved(sampleRow("2026-07-31T23:59:59Z"))}`,
+      ).resolves.toBeDefined();
+    } finally {
+      await reserved.unsafe(`RESET TimeZone`);
+      reserved.release();
+    }
+  });
+
   it("append-only enforcement is a real, verified Postgres privilege restriction", async () => {
     await sql.unsafe(`DROP ROLE IF EXISTS it_outbox_app_role`);
     await sql.unsafe(`CREATE ROLE it_outbox_app_role`);

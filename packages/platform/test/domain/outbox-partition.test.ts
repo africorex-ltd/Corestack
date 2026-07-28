@@ -5,23 +5,49 @@ import { computeMonthlyPartitionBounds } from "../../src/domain/outbox-partition
 describe("computeMonthlyPartitionBounds", () => {
   it("returns the current month only when monthsAhead is 0", () => {
     const bounds = computeMonthlyPartitionBounds(new Date("2026-07-15T12:00:00Z"), 0);
-    expect(bounds).toEqual([{ name: "outbox_2026_07", from: "2026-07-01", to: "2026-08-01" }]);
+    expect(bounds).toEqual([
+      {
+        name: "outbox_2026_07",
+        from: "2026-07-01T00:00:00+00:00",
+        to: "2026-08-01T00:00:00+00:00",
+      },
+    ]);
   });
 
   it("returns the current month plus N months ahead, in order", () => {
     const bounds = computeMonthlyPartitionBounds(new Date("2026-07-15T12:00:00Z"), 2);
     expect(bounds).toEqual([
-      { name: "outbox_2026_07", from: "2026-07-01", to: "2026-08-01" },
-      { name: "outbox_2026_08", from: "2026-08-01", to: "2026-09-01" },
-      { name: "outbox_2026_09", from: "2026-09-01", to: "2026-10-01" },
+      {
+        name: "outbox_2026_07",
+        from: "2026-07-01T00:00:00+00:00",
+        to: "2026-08-01T00:00:00+00:00",
+      },
+      {
+        name: "outbox_2026_08",
+        from: "2026-08-01T00:00:00+00:00",
+        to: "2026-09-01T00:00:00+00:00",
+      },
+      {
+        name: "outbox_2026_09",
+        from: "2026-09-01T00:00:00+00:00",
+        to: "2026-10-01T00:00:00+00:00",
+      },
     ]);
   });
 
   it("rolls over the year boundary correctly", () => {
     const bounds = computeMonthlyPartitionBounds(new Date("2026-12-10T00:00:00Z"), 1);
     expect(bounds).toEqual([
-      { name: "outbox_2026_12", from: "2026-12-01", to: "2027-01-01" },
-      { name: "outbox_2027_01", from: "2027-01-01", to: "2027-02-01" },
+      {
+        name: "outbox_2026_12",
+        from: "2026-12-01T00:00:00+00:00",
+        to: "2027-01-01T00:00:00+00:00",
+      },
+      {
+        name: "outbox_2027_01",
+        from: "2027-01-01T00:00:00+00:00",
+        to: "2027-02-01T00:00:00+00:00",
+      },
     ]);
   });
 

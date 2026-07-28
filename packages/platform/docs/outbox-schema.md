@@ -15,13 +15,13 @@ creates schema only; it does not write or relay events.
 
 **Public surface:**
 
-| Export                      | Layer          | Purpose                                                                 |
-| ---------------------------- | -------------- | ------------------------------------------------------------------------ |
-| `ensureOutboxSchema(sql, options)` | infrastructure, exported via `./postgres` | Bootstraps all three tables, both indexes, and current+N-months-ahead partitions |
-| `EnsureOutboxSchemaOptions`  | infrastructure, exported via `./postgres` | `referenceDate` (defaults to `new Date()`), `applicationRole` (optional append-only enforcement) |
-| `computeMonthlyPartitionBounds(referenceDate, monthsAhead)` | domain | Pure function computing partition names/bounds — no I/O |
-| `assertSafeSqlIdentifier(identifier, purpose)` | domain | Validates a Postgres identifier before DDL interpolation (throws `ValidationError`) |
-| `ensurePlatformSchema(sql)` | infrastructure, exported via `./postgres` | Shared `CREATE SCHEMA IF NOT EXISTS platform`, extracted from T02 and reused here |
+| Export                                                      | Layer                                     | Purpose                                                                                          |
+| ----------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `ensureOutboxSchema(sql, options)`                          | infrastructure, exported via `./postgres` | Bootstraps all three tables, both indexes, and current+N-months-ahead partitions                 |
+| `EnsureOutboxSchemaOptions`                                 | infrastructure, exported via `./postgres` | `referenceDate` (defaults to `new Date()`), `applicationRole` (optional append-only enforcement) |
+| `computeMonthlyPartitionBounds(referenceDate, monthsAhead)` | domain                                    | Pure function computing partition names/bounds — no I/O                                          |
+| `assertSafeSqlIdentifier(identifier, purpose)`              | domain                                    | Validates a Postgres identifier before DDL interpolation (throws `ValidationError`)              |
+| `ensurePlatformSchema(sql)`                                 | infrastructure, exported via `./postgres` | Shared `CREATE SCHEMA IF NOT EXISTS platform`, extracted from T02 and reused here                |
 
 ## The partitioning constraint this component resolves
 
@@ -43,12 +43,12 @@ asserted.
 
 ## Failure modes
 
-| Failure                                                            | Behavior                                                                                                                                                                    |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Re-running `ensureOutboxSchema` against an already-bootstrapped DB  | No-op — every DDL statement uses `IF NOT EXISTS`; verified idempotent against real Postgres                                                                               |
-| Insert with `occurred_at` outside every bootstrapped partition      | Postgres rejects the insert (no partition covers it) — this is the intended failure mode until T03's partition-maintenance job keeps future months bootstrapped ahead of time |
-| Duplicate `(consumer, event_id)` insert into `processed_events`     | Rejected by the composite primary key — this is the mechanism T14's idempotent-consumer helper relies on for at-most-once processing per consumer                        |
-| `applicationRole` passed but not a valid lowercase SQL identifier   | `assertSafeSqlIdentifier` throws a `ValidationError` before any DDL runs, closing the injection path an unvalidated role name interpolated into `REVOKE ... FROM ${role}` would open |
+| Failure                                                            | Behavior                                                                                                                                                                             |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Re-running `ensureOutboxSchema` against an already-bootstrapped DB | No-op — every DDL statement uses `IF NOT EXISTS`; verified idempotent against real Postgres                                                                                          |
+| Insert with `occurred_at` outside every bootstrapped partition     | Postgres rejects the insert (no partition covers it) — this is the intended failure mode until T03's partition-maintenance job keeps future months bootstrapped ahead of time        |
+| Duplicate `(consumer, event_id)` insert into `processed_events`    | Rejected by the composite primary key — this is the mechanism T14's idempotent-consumer helper relies on for at-most-once processing per consumer                                    |
+| `applicationRole` passed but not a valid lowercase SQL identifier  | `assertSafeSqlIdentifier` throws a `ValidationError` before any DDL runs, closing the injection path an unvalidated role name interpolated into `REVOKE ... FROM ${role}` would open |
 
 ## Retry / timeout / cancellation
 
@@ -98,19 +98,31 @@ bootstrap that isn't already visible via Postgres's own DDL logging.
 anchoring regardless of local time, lexicographic sort matching
 chronological order) and 8 for `assertSafeSqlIdentifier` (valid-identifier
 acceptance, a parametrized rejection list including a SQL-injection-shaped
-string, and error-metadata verification); **5 real-Postgres integration
+string, and error-metadata verification); **6 real-Postgres integration
 tests** (Testcontainers) proving: idempotent re-bootstrap, all three tables
 plus both indexes actually exist, the table is genuinely partitioned (a
 row inside the current or next month's partition inserts; a row several
 months outside both is rejected by Postgres itself, not by application
 code), `outbox_checkpoints`/`processed_events` accept well-formed rows and
-reject a duplicate `(consumer, event_id)` pair, and — the test that most
-directly earns its keep — a real Postgres role granted full DML on
-`platform.outbox`, then handed to `ensureOutboxSchema` as
-`applicationRole`, can still `INSERT` afterward but has `UPDATE` and
+reject a duplicate `(consumer, event_id)` pair, partition bounds are
+correct regardless of the bootstrapping session's `TimeZone` (see below),
+and — the test that most directly earns its keep — a real Postgres role
+granted full DML on `platform.outbox`, then handed to `ensureOutboxSchema`
+as `applicationRole`, can still `INSERT` afterward but has `UPDATE` and
 `DELETE` genuinely rejected with a permission-denied error from Postgres
 itself (verified via `SET ROLE` on a reserved connection), not merely
 inferred from the `REVOKE` statement having run without error.
+
+**Bug caught before release, not after:** a bare `YYYY-MM-DD` literal in a
+`PARTITION OF ... FOR VALUES FROM/TO` clause is parsed using the DDL
+session's `TimeZone`, not UTC — verified directly against real Postgres
+(`SET TimeZone='America/New_York'` shifted the July partition's true start
+to `2026-07-01T04:00:00Z`, rejecting an insert for `2026-07-01T01:00:00Z`).
+`computeMonthlyPartitionBounds` now emits explicit `+00:00`-offset instants
+(`2026-07-01T00:00:00+00:00`) instead of bare dates, making the bound an
+unambiguous instant regardless of session `TimeZone`; a dedicated
+integration test bootstraps under a non-UTC session and inserts at both
+edges of the UTC month to prove it.
 
 ## Design rationale
 

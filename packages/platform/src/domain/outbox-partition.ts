@@ -10,9 +10,9 @@
 export interface PartitionBounds {
   /** e.g. "outbox_2026_07" — sortable, unambiguous. */
   readonly name: string;
-  /** Inclusive lower bound, `YYYY-MM-DD`. */
+  /** Inclusive lower bound, an explicit-UTC-offset instant (`YYYY-MM-DDT00:00:00+00:00`). */
   readonly from: string;
-  /** Exclusive upper bound, `YYYY-MM-DD`. */
+  /** Exclusive upper bound, an explicit-UTC-offset instant (`YYYY-MM-DDT00:00:00+00:00`). */
   readonly to: string;
 }
 
@@ -20,8 +20,18 @@ function firstOfMonth(reference: Date, monthOffset: number): Date {
   return new Date(Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth() + monthOffset, 1));
 }
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+/**
+ * A bare `YYYY-MM-DD` literal in a `PARTITION OF ... FOR VALUES FROM/TO`
+ * clause is parsed using the DDL session's `TimeZone` setting, not UTC —
+ * verified against real Postgres: under `TimeZone='America/New_York'`, a
+ * `'2026-07-01'` bound actually starts at `2026-07-01T04:00:00Z`, silently
+ * shifting the partition and causing inserts for the first few hours of
+ * the month (UTC) to fail with "no partition ... found". An explicit
+ * `+00:00` offset makes the literal an unambiguous instant regardless of
+ * the session's TimeZone.
+ */
+function isoInstant(date: Date): string {
+  return `${date.toISOString().slice(0, 10)}T00:00:00+00:00`;
 }
 
 /**
@@ -39,7 +49,7 @@ export function computeMonthlyPartitionBounds(
     const start = firstOfMonth(referenceDate, offset);
     const end = firstOfMonth(referenceDate, offset + 1);
     const name = `outbox_${start.getUTCFullYear()}_${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
-    bounds.push({ name, from: isoDate(start), to: isoDate(end) });
+    bounds.push({ name, from: isoInstant(start), to: isoInstant(end) });
   }
   return bounds;
 }
