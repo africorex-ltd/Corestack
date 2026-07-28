@@ -116,6 +116,15 @@ commit — the same mechanism works identically in both of
 depends only on ordinary Postgres role semantics, not on which mode
 created the connection.
 
+**Known harness limitation:** `withRole` proves the policies apply once
+`current_user` is switched via `SET ROLE` from a superuser session — it
+does not prove behavior is identical for a connection _authenticated_
+directly as the restricted role (no superuser session ever involved).
+E03-T40 is expected to wire up real per-role credentials as the
+production path; when it does, re-verify this harness's conclusions
+against that path rather than assuming `SET ROLE` equivalence carries
+over unexamined.
+
 **8 pure unit tests** (`test/domain/tenant-policy.test.ts`): DDL statement
 ordering, role/predicate scoping for both policies, identifier-validation
 rejection for every unsafe input.

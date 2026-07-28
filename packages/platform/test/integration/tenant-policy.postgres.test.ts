@@ -21,7 +21,11 @@ import type { Sql } from "postgres";
 import { buildTenantIsolationDdl } from "../../src/domain/tenant-policy.js";
 import { ensureTenancyRoles } from "../../src/infrastructure/postgres-tenancy-roles.js";
 import { withOrgContext } from "../../src/infrastructure/postgres-org-context.js";
-import { createTestDatabase, withRole, type TestDatabase } from "../../test-support/test-database.js";
+import {
+  createTestDatabase,
+  withRole,
+  type TestDatabase,
+} from "../../test-support/test-database.js";
 
 let db: TestDatabase;
 let sql: Sql;
@@ -102,7 +106,7 @@ describe("tenant isolation RLS policy (E03-T30 integration)", () => {
     expect(rows.map((r) => r.note)).toEqual(["org-a-widget", "org-b-widget"]);
   });
 
-  it("the table owner (superuser) is still subject to RLS once FORCE is set", async () => {
+  it("a superuser bypasses RLS even with FORCE set (Postgres's own exemption)", async () => {
     // Proves FORCE ROW LEVEL SECURITY is actually doing something — without
     // it, the owning superuser silently bypasses every policy.
     const rows = await sql.begin(async (tx) => {
@@ -125,7 +129,9 @@ describe("withOrgContext (E03-T30.3 integration)", () => {
     });
     expect(insideValue).toBe(ORG_A);
 
-    const after = await sql<{ v: string | null }[]>`SELECT current_setting('app.current_org', true) AS v`;
+    const after = await sql<
+      { v: string | null }[]
+    >`SELECT current_setting('app.current_org', true) AS v`;
     expect(after[0]?.v === null || after[0]?.v === "").toBe(true);
   });
 
