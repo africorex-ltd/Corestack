@@ -14,3 +14,9 @@ export { ensurePlatformSchema } from "../infrastructure/ensure-platform-schema.j
 
 export type { EnsureOutboxSchemaOptions } from "../infrastructure/postgres-outbox-schema.js";
 export { ensureOutboxSchema } from "../infrastructure/postgres-outbox-schema.js";
+
+export type { OutboxStaging } from "../infrastructure/postgres-outbox-writer.js";
+export {
+  writeOutboxEvents,
+  createOutboxStaging,
+} from "../infrastructure/postgres-outbox-writer.js";

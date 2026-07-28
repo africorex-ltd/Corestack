@@ -94,15 +94,48 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   latter closes an injection path in the `REVOKE ... FROM ${role}`
   statement); `ensurePlatformSchema` extracted from T02's adapter so both
   components bootstrap the shared `platform` schema from one place. 13
-  new unit tests plus **5 real-Postgres integration tests**
+  new unit tests plus **6 real-Postgres integration tests**
   (Testcontainers) proving idempotent re-bootstrap, genuine partitioning
   (a row several months outside every bootstrapped partition is rejected
   by Postgres itself), `processed_events`' composite-PK dedupe guarantee,
   and — verified against a real Postgres role via `SET ROLE`, not merely
   inferred from the `REVOKE` running without error — that append-only
   enforcement genuinely blocks `UPDATE`/`DELETE` while still allowing
-  `INSERT`. Full component spec:
+  `INSERT`. A follow-up fix caught and closed a real bug before it ever
+  shipped to a non-UTC deployment: a bare `YYYY-MM-DD` partition-bound
+  literal is parsed using the DDL session's `TimeZone`, not UTC, silently
+  shifting the true partition boundary — bounds now use explicit
+  `+00:00`-offset instants, proven under a `SET TimeZone='America/New_York'`
+  session inserting at both edges of the UTC month. Full component spec:
   [packages/platform/docs/outbox-schema.md](packages/platform/docs/outbox-schema.md).
+
+- **E03-T11 outbox writer:** `writeOutboxEvents` inserts a batch of staged
+  kernel `DomainEvent`s into `platform.outbox` atomically with whatever
+  else runs in the same Postgres transaction; `createOutboxStaging`
+  bridges the kernel's `UnitOfWork.TransactionContext.publish` port to a
+  `flush(sql)` call into this table. Deliberately does **not** implement
+  the full `UnitOfWork` port itself: the blueprint splits the transaction
+  boundary and repository-joining mechanism into E03-T40 ("Drizzle base
+  setup — tx-scoped `UnitOfWork` implementation"), which depends only on
+  `E02-T10`, not on T11 — building a `PostgresUnitOfWork` here would
+  preempt a contract T40 hasn't designed yet. Accepts `postgres`'s `ISql`
+  interface (the common supertype of both `Sql` and `TransactionSql`),
+  so one function serves a bare pool and an open transaction without two
+  code paths. 4 new pure domain tests for `toOutboxRow` (envelope→row
+  mapping, system-actor/platform-scoped nulls, causation-id propagation,
+  a complex payload left untouched) plus **6 real-Postgres integration
+  tests** (Testcontainers) proving atomic commit alongside a state change,
+  rollback discarding both the state change and the staged events, the
+  `tx.publish`→`flush` bridge behaving identically, and an exact `jsonb`
+  round-trip. Caught a real bug before it shipped: the obvious
+  `payload: JSON.stringify(event.payload)` mapping inserts without error
+  but comes back as a plain string on `SELECT` (verified directly against
+  `postgres.js` — a pre-stringified value doesn't get deserialized back
+  into an object), silently corrupting every consumer expecting the
+  original payload shape; fixed by leaving the payload as its raw value in
+  the domain mapping and letting `postgres.js` serialize it at the adapter
+  boundary. Full component spec:
+  [packages/platform/docs/outbox-writer.md](packages/platform/docs/outbox-writer.md).
 
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
