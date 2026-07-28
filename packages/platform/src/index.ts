@@ -111,3 +111,6 @@ export type {
   ReadinessResult,
 } from "./application/health-readiness.js";
 export { checkLiveness, checkReadiness, RelayLagRecorder } from "./application/health-readiness.js";
+
+export type { TenantPolicyTarget } from "./domain/tenant-policy.js";
+export { buildTenantIsolationDdl } from "./domain/tenant-policy.js";

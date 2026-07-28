@@ -35,3 +35,8 @@ export {
   PostgresDatabasePing,
   PostgresMigrationsStatus,
 } from "../infrastructure/postgres-health-checks.js";
+
+export type { TenancyRoleNames } from "../infrastructure/postgres-tenancy-roles.js";
+export { ensureTenancyRoles } from "../infrastructure/postgres-tenancy-roles.js";
+
+export { withOrgContext } from "../infrastructure/postgres-org-context.js";

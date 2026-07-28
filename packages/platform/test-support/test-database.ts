@@ -30,7 +30,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import postgres, { type Sql } from "postgres";
+import postgres, { type Sql, type TransactionSql } from "postgres";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 import { assertSafeSqlIdentifier } from "../src/domain/sql-identifier.js";
@@ -115,4 +115,29 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   return databaseUrl === undefined
     ? createTestcontainersDatabase()
     : createLocalTestDatabase(databaseUrl);
+}
+
+/**
+ * Runs `fn` inside a transaction where the current role has been switched
+ * to `roleName` via `SET LOCAL ROLE` — for RLS harness tests (E03-T30) that
+ * need to prove a policy's behavior *as* a restricted, non-superuser role
+ * without a separate login-role credential per test. Verified empirically:
+ * a superuser can `SET LOCAL ROLE` into any `NOLOGIN` role with no explicit
+ * membership grant required, and the role reverts to the original on
+ * commit/rollback — identical behavior in both local-Postgres and
+ * Testcontainers mode, since it depends only on ordinary Postgres role
+ * semantics, not on which mode created the connection.
+ */
+export async function withRole<T>(
+  sql: Sql,
+  roleName: string,
+  fn: (tx: TransactionSql) => Promise<T>,
+): Promise<T> {
+  assertSafeSqlIdentifier(roleName, "test role name");
+  // See withOrgContext's comment (postgres-org-context.ts) — the cast works
+  // around postgres.js's `.begin` typing, not a runtime behavior change.
+  return sql.begin(async (tx) => {
+    await tx.unsafe(`SET LOCAL ROLE ${roleName}`);
+    return fn(tx);
+  }) as Promise<T>;
 }

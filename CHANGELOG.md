@@ -300,6 +300,38 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   component spec:
   [packages/platform/docs/health-readiness.md](packages/platform/docs/health-readiness.md).
 
+- **Fix: `countBacklog` torn-read.** `PostgresOutboxRelayStore.countBacklog`
+  read the checkpoint and counted backlog rows as two separate statements,
+  leaving a window where a concurrent `advanceCheckpoint` between them
+  produced a count relative to an already-stale cursor. Folded into one
+  `COALESCE`-based query; verified atomic on PostgreSQL 18 for both the
+  no-checkpoint and existing-checkpoint branches.
+
+- **E03-T30 RLS harness (tenant isolation):** `buildTenantIsolationDdl`
+  emits a per-table policy template implementing ADR-0008's layer 3
+  (Postgres RLS as defense-in-depth) — `ENABLE`/`FORCE ROW LEVEL SECURITY`
+  plus two policies scoped to two different roles: `tenant_isolation`
+  (`organization_id = current_setting('app.current_org')::uuid`, no
+  `missing_ok`) for the application role, and `platform_full_access`
+  (`USING (true)`) for the platform-scoped role (relay/sweepers/support
+  tooling) per DB §15. `ensureTenancyRoles` idempotently bootstraps both
+  roles (`NOLOGIN` — no real login credential yet; that's E03-T40's
+  decision to make). `withOrgContext` sets `app.current_org` per
+  transaction via `set_config(..., true)`, not `SET LOCAL ... = $1` —
+  verified empirically that Postgres rejects a bind parameter in `SET
+LOCAL` syntax outright. Along the way, verified a genuinely surprising
+  Postgres GUC-scoping behavior: a pooled connection that has _ever_ set a
+  custom parameter transaction-locally later reads it back as `''` (not
+  `NULL`) once that transaction ends, so the policy's un-hedged
+  `current_setting` throws a hard error on any forgotten `withOrgContext`
+  call — fail-loud, never a silent cross-tenant leak or a silent
+  false-negative "no rows" result, regardless of connection history. 7 new
+  integration tests prove isolation in **both** directions (not just
+  "wrong org gets nothing," which a role that can't see the table at all
+  would pass vacuously) plus the platform role's full access and the
+  table-owning superuser's RLS-bypass exemption. Full component spec:
+  [packages/platform/docs/tenant-isolation.md](packages/platform/docs/tenant-isolation.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

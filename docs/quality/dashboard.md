@@ -7,7 +7,9 @@
 > migrated local dev/test to PostgreSQL 18 — see
 > [postgres-18-compatibility.md](../platform/postgres-18-compatibility.md);
 > T23 health/readiness done — see
-> [health-readiness.md](../../packages/platform/docs/health-readiness.md)).
+> [health-readiness.md](../../packages/platform/docs/health-readiness.md);
+> T30 RLS harness done — see
+> [tenant-isolation.md](../../packages/platform/docs/tenant-isolation.md)).
 
 ## Standing policy
 
@@ -32,7 +34,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 42 files / **315 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 171 unit + 48 integration) |
+| Test files / tests   | 44 files / **330 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 179 unit + 55 integration) |
 | Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |
