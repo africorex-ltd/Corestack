@@ -82,3 +82,32 @@ export type {
   MigrationRunResult,
 } from "./application/migration-runner.js";
 export { runMigrations } from "./application/migration-runner.js";
+
+export type { CheckStatus, ReadinessLevel } from "./domain/health.js";
+export {
+  worstCheckStatus,
+  worstReadinessLevel,
+  checkStatusToReadinessLevel,
+  moduleHealthStatusToReadinessLevel,
+} from "./domain/health.js";
+
+export type {
+  LivenessResult,
+  DatabasePingPort,
+  MigrationsStatusPort,
+  RelayLagReading,
+  RelayLagThresholds,
+  RelayLagConsumerResult,
+  RelayLagCheckResult,
+  BacklogCheckPort,
+  BacklogThresholds,
+  BacklogConsumerResult,
+  BacklogCheckResult,
+  DatabaseCheckResult,
+  ClockSkewCheckResult,
+  MigrationsCheckResult,
+  ReadinessThresholds,
+  ReadinessDeps,
+  ReadinessResult,
+} from "./application/health-readiness.js";
+export { checkLiveness, checkReadiness, RelayLagRecorder } from "./application/health-readiness.js";

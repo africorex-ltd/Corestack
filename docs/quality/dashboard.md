@@ -2,9 +2,12 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-28** (E03 in progress: outbox epic
-> T02-T03, T10-T14 done; Infrastructure Consolidation pass complete — see
-> [E03-outbox-milestone-report.md](../engineering/reviews/E03-outbox-milestone-report.md)).
+> estimated. Last update: **2026-07-29** (E03 in progress: outbox epic
+> T02-T03, T10-T14 done; Infrastructure Consolidation pass complete;
+> migrated local dev/test to PostgreSQL 18 — see
+> [postgres-18-compatibility.md](../platform/postgres-18-compatibility.md);
+> T23 health/readiness done — see
+> [health-readiness.md](../../packages/platform/docs/health-readiness.md)).
 
 ## Standing policy
 
@@ -29,7 +32,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 39 files / **280 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 144 unit + 40 integration) |
+| Test files / tests   | 42 files / **315 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 171 unit + 48 integration) |
 | Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |
@@ -46,13 +49,13 @@ for the first instance of this standard.
 
 ## CI health
 
-| Gate                  | Status                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Silent-success guards | ✅ `assert-turbo-tasks` on `test` (min 3) and `test:integration` (exact manifest — now non-trivially exercised: `@corestack/platform`) |
-| Integration lane      | ✅ Live: Testcontainers-based, no fixed service container needed (Docker on the runner is sufficient)                                  |
-| Actions supply chain  | ✅ All actions SHA-pinned; Renovate `pinDigests` maintains                                                                             |
-| Release pipeline      | ⏸ Gated on `RELEASE_ENABLED` repo variable (awaiting npm org + token — external)                                                       |
-| Dependency audit      | Scheduled lane (weekly + main), not PR-blocking (AUD-13 rationale)                                                                     |
+| Gate                  | Status                                                                                                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Silent-success guards | ✅ `assert-turbo-tasks` on `test` (min 3) and `test:integration` (exact manifest — now non-trivially exercised: `@corestack/platform`)                                        |
+| Integration lane      | ✅ Live: Testcontainers-based in CI (no fixed service container needed); dual-mode locally — a local Postgres via `DATABASE_URL` or Testcontainers, same test code either way |
+| Actions supply chain  | ✅ All actions SHA-pinned; Renovate `pinDigests` maintains                                                                                                                    |
+| Release pipeline      | ⏸ Gated on `RELEASE_ENABLED` repo variable (awaiting npm org + token — external)                                                                                              |
+| Dependency audit      | Scheduled lane (weekly + main), not PR-blocking (AUD-13 rationale)                                                                                                            |
 
 ## Benchmarks
 

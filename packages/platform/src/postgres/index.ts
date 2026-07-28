@@ -30,3 +30,8 @@ export type {
   OutboxPartitionMaintenanceReport,
 } from "../infrastructure/postgres-outbox-partition-maintenance.js";
 export { maintainOutboxPartitions } from "../infrastructure/postgres-outbox-partition-maintenance.js";
+
+export {
+  PostgresDatabasePing,
+  PostgresMigrationsStatus,
+} from "../infrastructure/postgres-health-checks.js";

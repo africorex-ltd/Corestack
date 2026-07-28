@@ -239,6 +239,67 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   Full component spec:
   [packages/platform/docs/outbox-partition-maintenance.md](packages/platform/docs/outbox-partition-maintenance.md).
 
+- **Infrastructure Consolidation pass:** before continuing past the outbox
+  epic, a documentation-and-operability pass so the next phase builds on
+  a stable foundation rather than tribal knowledge. New:
+  `docs/platform/outbox-architecture.md` (end-to-end architecture map with
+  a sequence diagram, honest about which stages are live vs. designed-for
+  T40), `docs/operations/outbox-runbook.md` (10 operational procedures,
+  real SQL/API against the actual shipped schema — part of the
+  implementation, not aspirational), `docs/security/outbox-review.md` (0
+  P0/P1, 3 tracked P2 hardening items), `docs/platform/outbox-observability.md`
+  (fixed metrics/logs vocabulary, honest about what's live vs. contract-only),
+  and `docs/platform/health-contract.md` (the JSON contract written ahead
+  of T23). Real benchmark scaffolding for all six outbox hot paths
+  (`packages/platform/bench/`), deliberately kept outside `turbo.json`/CI
+  so it can never masquerade as a wired lane. New quality artifacts: an
+  outbox-epic lessons-learned doc and a milestone report scoped explicitly
+  as a mid-epic checkpoint, not the full E03-exit health report.
+
+- **PostgreSQL 18 migration:** replaced the Testcontainers-only local test
+  target with a dual-mode database bootstrap
+  (`test-support/test-database.ts`) that targets either a locally
+  installed Postgres via `DATABASE_URL` or Testcontainers when unset (the
+  CI path, unchanged). Isolation between parallel test files comes from a
+  throwaway _database_ per file, not a renamed schema — every shipped
+  component's `platform.*` schema name is an approved contract, honored
+  identically in both modes. Verified empirically against PostgreSQL 18.4
+  before migrating anything: the partition-bound timezone bug T10 already
+  fixed reproduces identically on 18 (confirming the fix is still
+  load-bearing), and every other assumption (row-value comparisons,
+  privilege enforcement, transactions, RLS, advisory locks) matches 16
+  exactly — see
+  [docs/platform/postgres-18-compatibility.md](docs/platform/postgres-18-compatibility.md).
+  All 7 integration test files and 6 bench scripts migrated; the full
+  integration suite now runs with full file-parallelism in ~12s (down
+  from requiring `--no-file-parallelism` under the old Docker-memory-ceiling
+  constraint). Captured the outbox epic's first real benchmark baseline
+  in the same pass — which caught a genuine infinite-loop bug in a
+  benchmark's own test fixture (an off-by-one in an in-memory store fake),
+  fixed with no production impact.
+
+- **E03-T23 health/readiness computation:** `checkLiveness`/`checkReadiness`
+  compute the exact JSON shapes `health-contract.md` specifies —
+  computation only, not HTTP routes (`packages/platform` has no
+  `interface/` layer yet; ADR-0012's REST API is later). Amended the
+  contract in the same pass once implementation surfaced three things the
+  contract-first draft got wrong: module health (`CoreStack.health()`,
+  already built in T21) is folded into readiness verbatim rather than
+  reinvented; `versionMismatch` isn't implementable (`platform.module_migrations.version`
+  is a per-module migration version, not a binary release version — no
+  schema field exists for the latter); and clock skew is measured against
+  Postgres's own clock (`SELECT now()`), the only trusted-time source
+  actually available and the one that matters for this epic's
+  timestamp-relative correctness. Added `countBacklog` to the
+  already-shipped `OutboxRelayStore` port as an **optional** member — a
+  required addition would have been a breaking public-API change.
+  `RelayLagRecorder` tracks each consumer's latest lag reading and when it
+  arrived, so a relay that stops polling reads as stale (failing), not as
+  "still healthy at its last value." 27 new unit tests + 8 new
+  integration tests (platform now at 171 unit + 48 integration). Full
+  component spec:
+  [packages/platform/docs/health-readiness.md](packages/platform/docs/health-readiness.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

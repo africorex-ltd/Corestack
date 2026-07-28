@@ -19,7 +19,7 @@ Backlog = outbox rows a given consumer has not yet processed.
 
 ```sql
 -- Current checkpoint for a consumer
-SELECT last_occurred_at, last_id
+SELECT last_occurred_at, last_event_id
 FROM platform.outbox_checkpoints
 WHERE consumer = 'billing-projector';
 
@@ -31,21 +31,21 @@ WHERE NOT EXISTS (
   WHERE c.consumer = 'billing-projector'
 )
 OR (o.occurred_at, o.id) > (
-  SELECT last_occurred_at, last_id FROM platform.outbox_checkpoints
+  SELECT last_occurred_at, last_event_id FROM platform.outbox_checkpoints
   WHERE consumer = 'billing-projector'
 );
 ```
 
-There is no built-in metric for this yet — see
-[outbox-observability.md](../platform/outbox-observability.md)'s
-`outbox_backlog_size` row, which is contract-only pending a
-`countBacklog` method. Until that lands, this query is the only way to
-answer "how far behind is this consumer."
+As of E03-T23, `PostgresOutboxRelayStore.countBacklog(consumer)` runs the
+same query programmatically (used by the readiness check's optional
+backlog dimension — see
+[health-contract.md](../platform/health-contract.md)). The manual query
+above remains useful for ad-hoc inspection without wiring up readiness.
 
 ## How to inspect checkpoints
 
 ```sql
-SELECT consumer, last_occurred_at, last_id
+SELECT consumer, last_occurred_at, last_event_id
 FROM platform.outbox_checkpoints
 ORDER BY consumer;
 ```
@@ -72,7 +72,7 @@ DELETE FROM platform.outbox_checkpoints WHERE consumer = 'billing-projector';
 
 -- Replay from a specific point (exclusive) instead of the full backlog
 UPDATE platform.outbox_checkpoints
-SET last_occurred_at = '2026-07-01T00:00:00+00:00', last_id = '00000000-0000-0000-0000-000000000000'
+SET last_occurred_at = '2026-07-01T00:00:00+00:00', last_event_id = '00000000-0000-0000-0000-000000000000'
 WHERE consumer = 'billing-projector';
 ```
 
@@ -204,7 +204,7 @@ at-least-once suppression, not a database-enforced guarantee).
 1. Confirm the process is alive and the relay was actually started
    (`relay.start()` called, not just constructed).
 2. Check the checkpoint isn't advancing: run the checkpoint query above
-   twice, a poll interval apart. If `last_occurred_at`/`last_id` are
+   twice, a poll interval apart. If `last_occurred_at`/`last_event_id` are
    unchanged and backlog is nonzero, the relay is stuck.
 3. Check the logs for the one failure signal the relay emits today:
    `outbox-relay: consumer "<name>" failed on event` (logged via

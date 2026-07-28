@@ -40,6 +40,14 @@ export interface OutboxRelayStore {
   /** Rows strictly after `after` (or from the start if `null`), ordered by `(occurredAt, id)`. */
   fetchBatch(after: RelayCursor | null, limit: number): Promise<readonly DomainEvent[]>;
   advanceCheckpoint(consumer: string, cursor: RelayCursor): Promise<void>;
+  /**
+   * Optional (E03-T23): count of outbox rows strictly after a consumer's
+   * checkpoint, for the readiness backlog check. Added as an optional
+   * member rather than required so existing `OutboxRelayStore`
+   * implementers (e.g. test fakes) remain valid without changes — a
+   * required addition would have been a breaking public-API change.
+   */
+  countBacklog?(consumer: string): Promise<number>;
 }
 
 export interface OutboxRelayOptions {
