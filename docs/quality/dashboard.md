@@ -2,7 +2,9 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-28** (E03 in progress: T03 complete — outbox epic T02-T03, T10-T14 done).
+> estimated. Last update: **2026-07-28** (E03 in progress: outbox epic
+> T02-T03, T10-T14 done; Infrastructure Consolidation pass complete — see
+> [E03-outbox-milestone-report.md](../engineering/reviews/E03-outbox-milestone-report.md)).
 
 ## Standing policy
 
@@ -17,11 +19,11 @@ for the first instance of this standard.
 
 ## Findings
 
-| Severity | Open                        | Resolved | Notes                                                                                                  |
-| -------- | --------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
-| **P0**   | **0**                       | 4        | AUD-01…04 — see [remediation log](remediation-log.md)                                                  |
-| **P1**   | 1 _(scheduled by design)_   | 6        | AUD-07 is a _decision deferred to E06 design_ (auth limiter algorithm), not an unfixed defect          |
-| **P2**   | 6 _(mapped into blueprint)_ | 2        | AUD-12→E01-T02.4 (partially covered by fitness tests already), AUD-13 done, AUD-14/15/16/18/19 tracked |
+| Severity | Open                      | Resolved | Notes                                                                                                                                                                                                                                                                                 |
+| -------- | ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P0**   | **0**                     | 4        | AUD-01…04 — see [remediation log](remediation-log.md)                                                                                                                                                                                                                                 |
+| **P1**   | 1 _(scheduled by design)_ | 6        | AUD-07 is a _decision deferred to E06 design_ (auth limiter algorithm), not an unfixed defect                                                                                                                                                                                         |
+| **P2**   | 9 _(6 mapped + 3 new)_    | 2        | AUD-12→E01-T02.4, AUD-13 done, AUD-14/15/16/18/19 tracked; **+3 new** from the outbox security review — checkpoint-table privilege separation, no per-handler timeout, no admin-action audit log (none externally exploitable — see [outbox-review.md](../security/outbox-review.md)) |
 
 ## Test & coverage
 
@@ -54,8 +56,18 @@ for the first instance of this standard.
 
 ## Benchmarks
 
-None yet — harness arrives E04-T13; hot-path budgets (≤5 ms session/policy
-p95) become CI-gated then. History table starts with the first run.
+Kernel hot paths: none yet — harness arrives E04-T13; hot-path budgets
+(≤5 ms session/policy p95) become CI-gated then.
+
+**Outbox subsystem:** first real, runnable baseline exists as of the
+Infrastructure Consolidation pass — six scripts under
+`packages/platform/bench/` (`writeOutboxEvents`, relay polling, relay
+dispatch, checkpoint updates, processed-event inserts, partition
+maintenance), all measured against real Postgres (Testcontainers) except
+the in-memory relay-dispatch isolation script. **Not CI-gated, no
+thresholds** — same posture as the kernel, deferred to E04-T13. See
+[outbox-benchmark-methodology.md](architecture-benchmarks/outbox-benchmark-methodology.md)
+and [baselines/outbox/](architecture-benchmarks/baselines/outbox/).
 
 ## Technical debt register (must be zero or justified)
 
@@ -67,6 +79,24 @@ p95) become CI-gated then. History table starts with the first run.
 
 ## Documentation coverage
 
-All 15 ADRs current · design docs (architecture/database/api) versioned ·
+All 16 ADRs current · design docs (architecture/database/api) versioned ·
 5 guide structures approved · overview.md reconciled (AUD-11) ·
-docs drift-check joins every epic-exit checklist (AUD-19).
+docs drift-check joins every epic-exit checklist (AUD-19). Outbox
+subsystem consolidated (2026-07-28): end-to-end architecture map with
+sequence diagram, operational runbook, security review, observability
+contract, and health/readiness contract — see
+[E03-outbox-milestone-report.md](../engineering/reviews/E03-outbox-milestone-report.md)
+for the full index. One stale cross-reference caught and fixed in the
+same pass (E03-entry-review.md's runbook path).
+
+## Infrastructure maturity
+
+**78/100** as of the outbox-epic Infrastructure Consolidation pass
+(2026-07-28) — scored per-dimension (contract completeness, test rigor,
+operational readiness, security posture, performance visibility,
+documentation coherence) in
+[E03-outbox-milestone-report.md §6](../engineering/reviews/E03-outbox-milestone-report.md).
+Scope: the outbox subsystem only, not all of E03 or the whole platform
+package. Held back mainly by performance visibility (first baseline just
+established, unthresholded) and operational tooling maturity (runbook
+procedures like replay are manual SQL, not yet a built API).

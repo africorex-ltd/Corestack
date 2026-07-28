@@ -45,6 +45,7 @@
     "test": "vitest run --exclude \"**/test/integration/**\"",
     "test:watch": "vitest --exclude \"**/test/integration/**\"",
     "test:integration": "vitest run test/integration --testTimeout 60000",
+    "bench": "vitest run --config vitest.bench.config.ts --testTimeout 120000 --no-file-parallelism",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
