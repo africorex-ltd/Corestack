@@ -47,8 +47,11 @@ Every E03 component ships with: component spec (contract, failure modes,
 retry/timeout/cancellation, concurrency, performance, security) under
 `packages/platform/docs/`; observability via kernel Logger/metrics hooks +
 correlation propagation; runbook sections accreting into
-`docs/runbooks/platform.md`; benchmarks joining E04-T13's harness. The epic
-exits with an Engineering Health Report + lessons-learned.
+`docs/operations/` (per-subsystem files, e.g.
+[outbox-runbook.md](../../operations/outbox-runbook.md) — superseding this
+review's original `docs/runbooks/platform.md` placeholder path); benchmarks
+joining E04-T13's harness. The epic exits with an Engineering Health
+Report + lessons-learned.
 
 **Verdict: ENTER.** Sequenced start: T01 (loader, pure) → T20–T22
 (lifecycle/composition/config, in-memory-testable) → Postgres-backed set
