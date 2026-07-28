@@ -52,3 +52,6 @@ export type {
   ShutdownReport,
 } from "./application/graceful-shutdown.js";
 export { shutdownGracefully } from "./application/graceful-shutdown.js";
+
+export type { MembershipLookup, ResolveContextInput } from "./application/resolve-context.js";
+export { resolveContext } from "./application/resolve-context.js";

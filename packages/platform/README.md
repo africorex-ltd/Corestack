@@ -5,8 +5,9 @@
 > [decision 0001](../../docs/decisions/0001-platform-package.md)).
 > Grows task-by-task per [blueprint E03](../../docs/engineering/01-foundation.md);
 > the migration loader (E03-T01), module lifecycle contract (E03-T20),
-> config validation framework (E03-T22), `createCoreStack()` (E03-T21), and
-> graceful shutdown orchestration (E03-T24) exist so far.
+> config validation framework (E03-T22), `createCoreStack()` (E03-T21),
+> graceful shutdown orchestration (E03-T24), and context resolution
+> (E03-T32) exist so far.
 
 ## What this package is
 
@@ -39,18 +40,19 @@ performance budget, security considerations, and observability scoping
 
 ## Public API guide
 
-| Capability                                      | Status         | Entry point                                                                                                    |
-| ----------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
-| Migration format & loader                       | ✅ E03-T01     | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md) |
-| Module lifecycle contract                       | ✅ E03-T20     | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)   |
-| Config validation framework                     | ✅ E03-T22     | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md) |
-| `createCoreStack()` composition helper          | ✅ E03-T21     | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                               |
-| Graceful shutdown orchestration                 | ✅ E03-T24     | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                            |
-| Migration runner (`platform.module_migrations`) | 📋 E03-T02     | —                                                                                                              |
-| Transactional outbox (writer + relay)           | 📋 E03-T10–T14 | —                                                                                                              |
-| Health/readiness framework                      | 📋 E03-T23     | (needs the outbox relay, T12, to test readiness-flip against)                                                  |
-| RLS / tenant-isolation harness                  | 📋 E03-T30–T33 | —                                                                                                              |
-| Shared Postgres adapter base                    | 📋 E03-T40–T43 | —                                                                                                              |
+| Capability                                      | Status              | Entry point                                                                                                    |
+| ----------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Migration format & loader                       | ✅ E03-T01          | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md) |
+| Module lifecycle contract                       | ✅ E03-T20          | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)   |
+| Config validation framework                     | ✅ E03-T22          | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md) |
+| `createCoreStack()` composition helper          | ✅ E03-T21          | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                               |
+| Graceful shutdown orchestration                 | ✅ E03-T24          | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                            |
+| Context resolution (ADR-0008 layer 2)           | ✅ E03-T32          | `resolveContext`, `MembershipLookup` — see [component spec](docs/resolve-context.md)                           |
+| Migration runner (`platform.module_migrations`) | 📋 E03-T02          | —                                                                                                              |
+| Transactional outbox (writer + relay)           | 📋 E03-T10–T14      | —                                                                                                              |
+| Health/readiness framework                      | 📋 E03-T23          | (needs the outbox relay, T12, to test readiness-flip against)                                                  |
+| RLS / tenant-isolation harness                  | 📋 E03-T30–T31, T33 | —                                                                                                              |
+| Shared Postgres adapter base                    | 📋 E03-T40–T43      | —                                                                                                              |
 
 ## Example usage (migration loader)
 
@@ -195,10 +197,35 @@ process.on("SIGTERM", async () => {
 });
 ```
 
+## Example usage (context resolution)
+
+```ts
+import { resolveContext, type MembershipLookup } from "@corestack/platform";
+import { isOk } from "@corestack/kernel";
+
+// Real implementation queries tenancy.memberships; never trust the header directly.
+const membershipLookup: MembershipLookup = {
+  isActiveMember: async (userId, organizationId) => membershipRepo.isActive(userId, organizationId),
+};
+
+// actor comes from the auth module (session/API key already verified);
+// claimedOrgId comes from an untrusted request header/path segment.
+const result = await resolveContext(
+  { actor, claimedOrganizationId: claimedOrgId },
+  membershipLookup,
+  ids,
+);
+if (!isOk(result)) {
+  // Same 403 whether the org doesn't exist or the actor isn't a member.
+  return respond403();
+}
+const context = result.value; // trustworthy from here on
+```
+
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test        # 85 tests, no Docker required
+pnpm --filter @corestack/platform test        # 93 tests, no Docker required
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -255,7 +282,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 85 tests across 7 capabilities, zero Docker dependency for what exists so far                       |
+| Testability     | High — 93 tests across 8 capabilities, zero Docker dependency for what exists so far                       |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

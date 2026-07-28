@@ -43,6 +43,19 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   Diagram, prose, and the cross-package fitness rule updated together so
   the enforced rule and the documented rule can never diverge again.
 
+- **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
+  layer 2 tenant-isolation guarantee — a request `Context`'s organization
+  scope is server-resolved via a `MembershipLookup` port, never trusted
+  directly from a claimed header/path value. A forged-org claim and a
+  claim for a nonexistent org produce the **exact same** `ForbiddenError`,
+  by design (Architecture §20: cross-tenant access must be indistinguishable
+  from non-existence, closing an org-id enumeration side-channel) —
+  asserted directly by its own test, not just "both fail." Deliberately
+  narrow: authenticating the actor is the auth module's job (E06); this
+  function's only input is an already-authenticated actor plus an
+  untrusted org claim. 8 new tests (93 total in platform). Full component
+  spec: [packages/platform/docs/resolve-context.md](packages/platform/docs/resolve-context.md).
+
 - **E03-T24 graceful shutdown orchestration:** generic `shutdownGracefully`
   over a `Drainable` port — stop-intake for every registered component
   first, then drain each **in strict registration order**, each bounded by
