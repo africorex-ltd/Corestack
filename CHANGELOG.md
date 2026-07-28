@@ -167,6 +167,26 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   returning. Full component spec:
   [packages/platform/docs/outbox-relay.md](packages/platform/docs/outbox-relay.md).
 
+- **E03-T13 crash-consistency test suite:** proves Architecture §44.5's
+  three named scenarios against real Postgres, exercising the full
+  pipeline (T10 schema + T11 writer + T12 relay together, not any one
+  piece in isolation): crash before commit (neither the state change nor
+  the event survive), crash after commit but before any dispatch (a
+  brand-new relay instance still finds and delivers the committed event —
+  this gap being safe by construction is the entire point of the outbox
+  pattern), and crash mid-dispatch (a fresh relay resumes exactly at the
+  durable checkpoint, re-attempting only the events that hadn't succeeded
+  yet). Adds the angle neither T11 nor T12's own suites cover on their
+  own: **no duplicated effects** — a handler with its own idempotent
+  `ON CONFLICT (event_id) DO NOTHING` side effect ends up with exactly one
+  durable row per event even though one event is deliberately attempted
+  twice across the simulated crash and recovery. Every scenario discards
+  and reconstructs the transaction/relay/store objects between phases
+  rather than reusing one long-lived instance, so a weaker test can't pass
+  by accident on in-memory state a real crash would have wiped. 3 new
+  real-Postgres integration tests. Full component spec:
+  [packages/platform/docs/outbox-crash-consistency.md](packages/platform/docs/outbox-crash-consistency.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
