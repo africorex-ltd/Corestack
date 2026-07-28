@@ -43,6 +43,23 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   Diagram, prose, and the cross-package fitness rule updated together so
   the enforced rule and the documented rule can never diverge again.
 
+- **E03-T21 `createCoreStack()` composition helper:** wires already-built
+  `ModuleInstance`s (the adopter's own script calls each module's factory
+  directly — explicit, no reflection, per ADR-0014) into one `CoreStack`:
+  conformance-checks every module with issues namespaced by module name,
+  subscribes every module's event handlers to the shared bus, catches two
+  classes of cross-module boot mistake (duplicate `(consumer, event)`
+  registrations — would silently corrupt future outbox checkpoint
+  tracking — and a `migrations.module` not matching its registration key),
+  and aggregates health worst-of across modules. Design note written
+  before implementation per the task's own subtask breakdown. Real bug
+  caught by its own regression test before shipping: composition-level
+  checks assumed well-formed instances and crashed with a raw `TypeError`
+  on a malformed module instead of yielding to the conformance check's
+  aggregated error — fixed by only running them once conformance fully
+  passes. 12 new tests (77 total in platform). Full component spec:
+  [packages/platform/docs/create-core-stack.md](packages/platform/docs/create-core-stack.md).
+
 - **E03-T22 config validation framework:** per-module Zod schemas mapped
   from environment variables (`zod` is platform's first non-kernel runtime
   dependency, ADR-0005), with an optional `ref:...` secret-indirection

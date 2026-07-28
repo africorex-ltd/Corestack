@@ -4,8 +4,9 @@
 > depends on (Architecture §45, §47; ADR-0016;
 > [decision 0001](../../docs/decisions/0001-platform-package.md)).
 > Grows task-by-task per [blueprint E03](../../docs/engineering/01-foundation.md);
-> the migration loader (E03-T01), module lifecycle contract (E03-T20), and
-> config validation framework (E03-T22) exist so far.
+> the migration loader (E03-T01), module lifecycle contract (E03-T20),
+> config validation framework (E03-T22), and `createCoreStack()` (E03-T21)
+> exist so far.
 
 ## What this package is
 
@@ -43,9 +44,10 @@ performance budget, security considerations, and observability scoping
 | Migration format & loader                       | ✅ E03-T01     | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md) |
 | Module lifecycle contract                       | ✅ E03-T20     | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)   |
 | Config validation framework                     | ✅ E03-T22     | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md) |
+| `createCoreStack()` composition helper          | ✅ E03-T21     | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                               |
 | Migration runner (`platform.module_migrations`) | 📋 E03-T02     | —                                                                                                              |
 | Transactional outbox (writer + relay)           | 📋 E03-T10–T14 | —                                                                                                              |
-| `createCoreStack()` composition helper          | 📋 E03-T21–T24 | —                                                                                                              |
+| Health/readiness · graceful shutdown            | 📋 E03-T23–T24 | —                                                                                                              |
 | RLS / tenant-isolation harness                  | 📋 E03-T30–T33 | —                                                                                                              |
 | Shared Postgres adapter base                    | 📋 E03-T40–T43 | —                                                                                                              |
 
@@ -110,8 +112,8 @@ export const createWidgetsModule: ModuleFactory<WidgetsDeps, WidgetsConfig, Widg
 });
 ```
 
-The composition root (E03-T21) will call `checkModuleConformance`/
-`assertModuleConformance` on every module it wires — including third-party
+The composition root (`createCoreStack()`, E03-T21) calls
+`checkModuleConformance` on every module it wires — including third-party
 ones it never compiled against these types — so a malformed module fails
 loudly at boot with every problem listed at once.
 
@@ -139,10 +141,42 @@ if (!result.ok) {
 }
 ```
 
+## Example usage (composition root)
+
+The adopter's own composition script calls each module's factory directly
+— explicit, no reflection — then hands the built instances to
+`createCoreStack()` for cross-cutting wiring:
+
+```ts
+import {
+  InMemoryEventBus,
+  SystemClock,
+  UuidGenerator,
+  InMemoryUnitOfWork,
+  NoopLogger,
+} from "@corestack/kernel";
+import { createCoreStack } from "@corestack/platform";
+import { createWidgetsModule } from "./modules/widgets.js"; // your own module
+
+const eventBus = new InMemoryEventBus();
+const kernel = {
+  clock: new SystemClock(),
+  ids: new UuidGenerator(),
+  logger: new NoopLogger(),
+  eventBus,
+  unitOfWork: new InMemoryUnitOfWork(eventBus),
+};
+
+const widgets = createWidgetsModule(kernel, { defaultColor: "blue" });
+
+const stack = createCoreStack({ eventBus, modules: { widgets } });
+console.log(await stack.health()); // { status: "healthy", modules: { widgets: { status: "healthy" } } }
+```
+
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test        # 65 tests, no Docker required
+pnpm --filter @corestack/platform test        # 77 tests, no Docker required
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -199,7 +233,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 65 tests across 5 capabilities, zero Docker dependency for what exists so far                       |
+| Testability     | High — 77 tests across 6 capabilities, zero Docker dependency for what exists so far                       |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

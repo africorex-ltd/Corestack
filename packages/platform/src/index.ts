@@ -37,3 +37,10 @@ export type {
 export { loadModuleConfig, loadAllModuleConfigs } from "./application/config-validation.js";
 
 export { ProcessEnvSource } from "./infrastructure/process-env-source.js";
+
+export type {
+  CreateCoreStackOptions,
+  CoreStackHealth,
+  CoreStack,
+} from "./application/create-core-stack.js";
+export { createCoreStack } from "./application/create-core-stack.js";
