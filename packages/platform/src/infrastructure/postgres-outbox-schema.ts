@@ -35,6 +35,7 @@ import type { Sql } from "postgres";
 import { computeMonthlyPartitionBounds } from "../domain/outbox-partition.js";
 import { assertSafeSqlIdentifier } from "../domain/sql-identifier.js";
 import { ensurePlatformSchema } from "./ensure-platform-schema.js";
+import { createOutboxPartitions } from "./outbox-partition-ddl.js";
 
 export interface EnsureOutboxSchemaOptions {
   /** Reference instant for computing which monthly partitions must exist; defaults to now. */
@@ -78,12 +79,7 @@ export async function ensureOutboxSchema(
   `);
 
   const bounds = computeMonthlyPartitionBounds(options.referenceDate ?? new Date(), 1);
-  for (const bound of bounds) {
-    await sql.unsafe(`
-      CREATE TABLE IF NOT EXISTS platform.${bound.name} PARTITION OF platform.outbox
-        FOR VALUES FROM ('${bound.from}') TO ('${bound.to}')
-    `);
-  }
+  await createOutboxPartitions(sql, bounds);
 
   await sql.unsafe(`
     CREATE TABLE IF NOT EXISTS platform.outbox_checkpoints (

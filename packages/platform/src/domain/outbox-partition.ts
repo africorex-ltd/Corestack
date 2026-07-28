@@ -3,8 +3,7 @@
  * "partitioned monthly by occurred_at"). Pure date arithmetic — no I/O, no
  * Node builtins — so the boundary computation is testable without Postgres
  * and reusable by both the initial bootstrap (this task) and the ongoing
- * partition-maintenance job (E03-T03, deferred: "create next 2 periods
- * ahead of time").
+ * partition-maintenance job (E03-T03: "create next 2 periods ahead of time").
  */
 
 export interface PartitionBounds {
@@ -52,4 +51,21 @@ export function computeMonthlyPartitionBounds(
     bounds.push({ name, from: isoInstant(start), to: isoInstant(end) });
   }
   return bounds;
+}
+
+const PARTITION_NAME_PATTERN = /^outbox_(\d{4})_(\d{2})$/;
+
+/**
+ * The exclusive upper bound (UTC month start of the following month) a
+ * partition name like `outbox_2026_07` denotes — the inverse of the name
+ * this module generates. Returns `null` for any name that doesn't match
+ * the pattern (E03-T03's maintenance job skips those rather than guessing
+ * at bounds for a partition it didn't create, e.g. one attached by hand).
+ */
+export function partitionUpperBound(partitionName: string): Date | null {
+  const match = PARTITION_NAME_PATTERN.exec(partitionName);
+  if (match === null) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  return new Date(Date.UTC(year, month, 1));
 }

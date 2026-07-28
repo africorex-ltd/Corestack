@@ -59,7 +59,10 @@ export { resolveContext } from "./application/resolve-context.js";
 export { computeChainChecksum, computeAdvisoryLockKey } from "./domain/chain-checksum.js";
 
 export type { PartitionBounds } from "./domain/outbox-partition.js";
-export { computeMonthlyPartitionBounds } from "./domain/outbox-partition.js";
+export { computeMonthlyPartitionBounds, partitionUpperBound } from "./domain/outbox-partition.js";
+
+export type { ExistingPartition, PartitionDropPlan } from "./domain/outbox-partition-retention.js";
+export { planPartitionDrops } from "./domain/outbox-partition-retention.js";
 
 export { assertSafeSqlIdentifier } from "./domain/sql-identifier.js";
 

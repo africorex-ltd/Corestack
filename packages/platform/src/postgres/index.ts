@@ -24,3 +24,9 @@ export {
 export { PostgresOutboxRelayStore } from "../infrastructure/postgres-outbox-relay-store.js";
 
 export { PostgresProcessedEventStore } from "../infrastructure/postgres-processed-event-store.js";
+
+export type {
+  MaintainOutboxPartitionsOptions,
+  OutboxPartitionMaintenanceReport,
+} from "../infrastructure/postgres-outbox-partition-maintenance.js";
+export { maintainOutboxPartitions } from "../infrastructure/postgres-outbox-partition-maintenance.js";

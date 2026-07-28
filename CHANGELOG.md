@@ -204,9 +204,40 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   redelivery, a failed handler leaves the event retryable) proven against
   this adapter too, independent per-consumer state, and — the angle no
   in-memory store can prove — genuine same-transaction atomicity and
-  rollback when bound to an open transaction. This completes the
-  re-sequenced outbox epic (T10-T14). Full component spec:
+  rollback when bound to an open transaction. Full component spec:
   [packages/platform/docs/processed-event-store.md](packages/platform/docs/processed-event-store.md).
+
+- **E03-T03 outbox partition maintenance:** `maintainOutboxPartitions`
+  closes the loop the re-sequenced outbox epic left open — create-ahead
+  (next 2 months, reusing E03-T10's exact partition DDL, now extracted
+  into a shared helper) plus an opt-in retention-drop that only removes a
+  partition once **every** expected consumer's checkpoint has advanced
+  past it, pruning that partition's `platform.processed_events` rows in
+  the same transaction as the drop. No default retention window (the
+  approved design docs deliberately leave that policy open) and no
+  implicit "everyone's caught up" inference from an empty
+  `outbox_checkpoints` table — a fresh deploy has zero checkpoint rows
+  precisely because nothing has processed anything yet, not because every
+  consumer is done; treating the two the same would authorize dropping a
+  fresh deploy's entire outbox. The caller must declare every consumer it
+  expects, and a missing checkpoint row blocks the drop the same way a
+  checkpoint that hasn't reached the partition does. A plain callable
+  function, not a running job — there's no scheduler module yet to wire
+  it into. Self-contained plain SQL; `pg_partman` remains a valid optional
+  convenience per Database §18, not a dependency. 10 new pure domain tests
+  (`partitionUpperBound`, the exact inverse of T10's name generation; and
+  `planPartitionDrops`, covering the dangerous no-checkpoint-row case,
+  the exactly-at-the-boundary case, one lagging consumer among several,
+  and multiple partitions evaluated independently) plus **7 real-Postgres
+  integration tests** (Testcontainers) proving create-ahead, idempotent
+  re-runs, the dangerous fresh-deploy case dropping nothing, a
+  fully-caught-up drop pruning `processed_events` correctly, a lagging
+  second consumer blocking a drop the first consumer alone would have
+  allowed, and — proving the prune is gated on the actual drop, not the
+  configured retention age — a blocked partition's dedupe rows surviving
+  untouched. This completes the re-sequenced outbox epic (T02-T03, T10-T14).
+  Full component spec:
+  [packages/platform/docs/outbox-partition-maintenance.md](packages/platform/docs/outbox-partition-maintenance.md).
 
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization

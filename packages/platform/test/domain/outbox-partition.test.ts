@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { computeMonthlyPartitionBounds } from "../../src/domain/outbox-partition.js";
+import {
+  computeMonthlyPartitionBounds,
+  partitionUpperBound,
+} from "../../src/domain/outbox-partition.js";
 
 describe("computeMonthlyPartitionBounds", () => {
   it("returns the current month only when monthsAhead is 0", () => {
@@ -62,5 +65,27 @@ describe("computeMonthlyPartitionBounds", () => {
     const bounds = computeMonthlyPartitionBounds(new Date("2026-09-15T00:00:00Z"), 4);
     const names = bounds.map((b) => b.name);
     expect([...names].sort()).toEqual(names);
+  });
+});
+
+describe("partitionUpperBound", () => {
+  it("is the exact inverse of the name computeMonthlyPartitionBounds generates", () => {
+    const bounds = computeMonthlyPartitionBounds(new Date("2026-07-15T00:00:00Z"), 0);
+    const bound = bounds[0];
+    expect(bound).toBeDefined();
+    expect(partitionUpperBound(bound!.name)?.toISOString()).toBe(new Date(bound!.to).toISOString());
+  });
+
+  it("rolls over the year correctly (outbox_2026_12 -> 2027-01-01)", () => {
+    expect(partitionUpperBound("outbox_2026_12")?.toISOString()).toBe(
+      new Date("2027-01-01T00:00:00Z").toISOString(),
+    );
+  });
+
+  it("returns null for a name that doesn't match the pattern", () => {
+    expect(partitionUpperBound("outbox_2026")).toBeNull();
+    expect(partitionUpperBound("outbox_2026_13")).not.toBeNull(); // month range isn't validated, just shape
+    expect(partitionUpperBound("something_else")).toBeNull();
+    expect(partitionUpperBound("module_migrations")).toBeNull();
   });
 });
