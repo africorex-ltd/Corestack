@@ -2,7 +2,7 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-28** (E03 in progress: T13 complete).
+> estimated. Last update: **2026-07-28** (E03 in progress: T14 complete — outbox epic T10-T14 done).
 
 ## Standing policy
 
@@ -27,7 +27,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 35 files / **256 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 134 unit + 26 integration) |
+| Test files / tests   | 36 files / **263 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 134 unit + 33 integration) |
 | Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |

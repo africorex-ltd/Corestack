@@ -22,3 +22,5 @@ export {
 } from "../infrastructure/postgres-outbox-writer.js";
 
 export { PostgresOutboxRelayStore } from "../infrastructure/postgres-outbox-relay-store.js";
+
+export { PostgresProcessedEventStore } from "../infrastructure/postgres-processed-event-store.js";

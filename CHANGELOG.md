@@ -187,6 +187,27 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   real-Postgres integration tests. Full component spec:
   [packages/platform/docs/outbox-crash-consistency.md](packages/platform/docs/outbox-crash-consistency.md).
 
+- **E03-T14 idempotent consumer helper (Postgres):** `PostgresProcessedEventStore`
+  implements the kernel's `ProcessedEventStore` port (E02-T03) against
+  `platform.processed_events`, giving `idempotentHandler` durable,
+  cross-restart dedupe instead of the in-memory reference's
+  process-lifetime-only version. Documents plainly the one real nuance in
+  the already-approved kernel port: the generic `idempotentHandler`
+  wrapper calls a handler and the mark as two separate steps, so true
+  same-transaction atomicity only happens when a handler explicitly binds
+  this store to its own open transaction and calls `markProcessed` before
+  committing — not a gap introduced by this task, just made explicit
+  rather than left as a silent surprise. 7 new real-Postgres integration
+  tests: the port's basic contract, `markProcessed` idempotency, the
+  _exact_ behavioral assertions kernel's own suite already makes for
+  `InMemoryProcessedEventStore` (exactly-once invocation across
+  redelivery, a failed handler leaves the event retryable) proven against
+  this adapter too, independent per-consumer state, and — the angle no
+  in-memory store can prove — genuine same-transaction atomicity and
+  rollback when bound to an open transaction. This completes the
+  re-sequenced outbox epic (T10-T14). Full component spec:
+  [packages/platform/docs/processed-event-store.md](packages/platform/docs/processed-event-store.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

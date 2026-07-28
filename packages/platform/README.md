@@ -4,10 +4,7 @@
 > depends on (Architecture §45, §47; ADR-0016;
 > [decision 0001](../../docs/decisions/0001-platform-package.md)).
 > Grows task-by-task per [blueprint E03](../../docs/engineering/01-foundation.md);
-> the migration loader (E03-T01), module lifecycle contract (E03-T20),
-> config validation framework (E03-T22), `createCoreStack()` (E03-T21),
-> graceful shutdown orchestration (E03-T24), context resolution (E03-T32),
-> and the `platform.module_migrations` runner (E03-T02) exist so far.
+> see the **Public API guide** below for exactly which tasks are done.
 
 ## What this package is
 
@@ -59,7 +56,7 @@ performance budget, security considerations, and observability scoping
 | Outbox writer                                   | ✅ E03-T11          | `writeOutboxEvents`, `createOutboxStaging` (`./postgres`) — see [component spec](docs/outbox-writer.md)                                |
 | Outbox relay                                    | ✅ E03-T12          | `OutboxRelay`, `PostgresOutboxRelayStore` (`./postgres`) — see [component spec](docs/outbox-relay.md)                                  |
 | Crash-consistency test suite                    | ✅ E03-T13          | 3 real-Postgres scenarios (crash before commit / pre-dispatch / mid-dispatch) — see [component spec](docs/outbox-crash-consistency.md) |
-| Idempotent consumer helper                      | 📋 E03-T14          | —                                                                                                                                      |
+| Idempotent consumer helper (Postgres)           | ✅ E03-T14          | `PostgresProcessedEventStore` (`./postgres`) — see [component spec](docs/processed-event-store.md)                                     |
 | Health/readiness framework                      | 📋 E03-T23          | (needs the outbox relay, T12, to test readiness-flip against)                                                                          |
 | RLS / tenant-isolation harness                  | 📋 E03-T30–T31, T33 | —                                                                                                                                      |
 | Shared Postgres adapter base                    | 📋 E03-T40–T43      | —                                                                                                                                      |
