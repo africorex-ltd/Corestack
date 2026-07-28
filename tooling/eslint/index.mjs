@@ -120,4 +120,21 @@ export default tseslint.config(
       "no-restricted-globals": "off",
     },
   },
+  {
+    // The one canonical exception to the process.env ban: the reference
+    // EnvSource adapter's entire job is bridging process.env into the
+    // config-validation framework's port (E03-T22) — everything else reads
+    // config through that framework's validated output, never ad-hoc.
+    // Scoped to this exact filename pattern, not the whole infrastructure
+    // layer, so the rule still catches ad-hoc process.env reads in every
+    // other adapter (e.g. a future Postgres connection adapter must receive
+    // its connection string via validated config, not read it directly).
+    files: ["packages/*/src/infrastructure/**/*env-source.ts"],
+    languageOptions: {
+      globals: { process: "readonly" },
+    },
+    rules: {
+      "no-restricted-globals": "off",
+    },
+  },
 );

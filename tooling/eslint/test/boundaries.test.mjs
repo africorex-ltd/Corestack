@@ -74,6 +74,24 @@ describe("layer boundaries", () => {
   });
 });
 
+describe("process global (E03-T22 exemption)", () => {
+  it("is banned in ordinary infrastructure adapters", async () => {
+    const messages = await lintAt(
+      "packages/fixture/src/infrastructure/postgres/repo.ts",
+      "export const url = process.env.DATABASE_URL;\n",
+    );
+    expect(ruleIds(messages)).toContain("no-restricted-globals");
+  });
+
+  it("is allowed only in the canonical *env-source.ts adapter", async () => {
+    const messages = await lintAt(
+      "packages/fixture/src/infrastructure/process-env-source.ts",
+      "export const url = process.env.DATABASE_URL;\n",
+    );
+    expect(ruleIds(messages)).not.toContain("no-restricted-globals");
+  });
+});
+
 describe("logging rules in production source", () => {
   it("console is banned in src", async () => {
     const messages = await lintAt(
