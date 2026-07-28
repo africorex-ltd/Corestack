@@ -83,7 +83,7 @@ there.
 **4 pure domain tests** for `toOutboxRow` (full envelope field mapping,
 system actor's null id + platform-scoped null org, causation-id
 propagation, and a nested/non-ASCII/null-bearing payload left untouched);
-**6 real-Postgres integration tests** (Testcontainers) proving: direct
+**6 real-Postgres integration tests** (via the dual-mode test-database bootstrap) proving: direct
 insert via a bare pool handle, empty-batch no-op, atomic commit alongside
 a state-change insert in the same transaction, rollback discarding both
 the state change and the staged events when the transaction throws,

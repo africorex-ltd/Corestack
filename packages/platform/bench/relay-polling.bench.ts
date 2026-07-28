@@ -8,18 +8,18 @@
  * docs/quality/architecture-benchmarks/outbox-benchmark-methodology.md.
  */
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { createContext, createEvent, FixedClock, UuidGenerator } from "@corestack/kernel";
 import type { DomainEvent, EventSubscription } from "@corestack/kernel";
-import postgres, { type Sql } from "postgres";
+import type { Sql } from "postgres";
 
 import { OutboxRelay } from "../src/application/outbox-relay.js";
 import { ensureOutboxSchema } from "../src/infrastructure/postgres-outbox-schema.js";
 import { writeOutboxEvents } from "../src/infrastructure/postgres-outbox-writer.js";
 import { PostgresOutboxRelayStore } from "../src/infrastructure/postgres-outbox-relay-store.js";
+import { createTestDatabase, type TestDatabase } from "../test-support/test-database.js";
 import { measure, writeBaseline } from "./harness.js";
 
-let container: StartedPostgreSqlContainer;
+let db: TestDatabase;
 let sql: Sql;
 
 const ids = new UuidGenerator();
@@ -38,13 +38,12 @@ function makeBatch(size: number): DomainEvent[] {
 }
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer("postgres:16-alpine").start();
-  sql = postgres(container.getConnectionUri(), { max: 5, onnotice: () => {} });
+  db = await createTestDatabase();
+  sql = db.sql;
 }, 120_000);
 
 afterAll(async () => {
-  await sql?.end();
-  await container?.stop();
+  await db?.close();
 });
 
 beforeEach(async () => {

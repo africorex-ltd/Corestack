@@ -121,7 +121,7 @@ scope, two-consumer isolation, name/version filtering with checkpoint
 still advancing past skipped rows, wildcard subscriptions, the
 catch-up-within-one-round loop under a small `batchSize`, lag reporting,
 and `Drainable` semantics with no active round; **4 real-Postgres
-integration tests** (Testcontainers) proving: no event skipped across a
+integration tests** (via the dual-mode test-database bootstrap) proving: no event skipped across a
 full restart (relay and store objects discarded and rebuilt between
 rounds — not just re-invoking a method on one long-lived instance),
 correct redelivery scope after a simulated mid-batch crash, the

@@ -99,7 +99,7 @@ anchoring regardless of local time, lexicographic sort matching
 chronological order) and 8 for `assertSafeSqlIdentifier` (valid-identifier
 acceptance, a parametrized rejection list including a SQL-injection-shaped
 string, and error-metadata verification); **6 real-Postgres integration
-tests** (Testcontainers) proving: idempotent re-bootstrap, all three tables
+tests** (via the dual-mode test-database bootstrap) proving: idempotent re-bootstrap, all three tables
 plus both indexes actually exist, the table is genuinely partitioned (a
 row inside the current or next month's partition inserts; a row several
 months outside both is rejected by Postgres itself, not by application

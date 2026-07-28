@@ -7,18 +7,18 @@
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { createContext, createEvent, FixedClock, UuidGenerator } from "@corestack/kernel";
 import type { DomainEvent } from "@corestack/kernel";
-import postgres, { type Sql } from "postgres";
+import type { Sql } from "postgres";
 
 import { ensureOutboxSchema } from "../../src/infrastructure/postgres-outbox-schema.js";
 import {
   createOutboxStaging,
   writeOutboxEvents,
 } from "../../src/infrastructure/postgres-outbox-writer.js";
+import { createTestDatabase, type TestDatabase } from "../../test-support/test-database.js";
 
-let container: StartedPostgreSqlContainer;
+let db: TestDatabase;
 let sql: Sql;
 
 const clock = new FixedClock(new Date("2026-07-15T12:00:00Z"));
@@ -36,13 +36,12 @@ function makeEvent(payload: unknown = { ok: true }): DomainEvent {
 }
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer("postgres:16-alpine").start();
-  sql = postgres(container.getConnectionUri(), { max: 5, onnotice: () => {} });
+  db = await createTestDatabase();
+  sql = db.sql;
 }, 120_000);
 
 afterAll(async () => {
-  await sql?.end();
-  await container?.stop();
+  await db?.close();
 });
 
 beforeEach(async () => {

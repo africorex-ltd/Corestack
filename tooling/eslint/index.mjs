@@ -110,8 +110,12 @@ export default tseslint.config(
     },
   },
   {
-    // Tests and tooling may use Node APIs and console freely.
-    files: ["**/test/**", "tooling/**", "apps/**"],
+    // Tests and tooling may use Node APIs and console freely. test-support/
+    // covers shared test infrastructure that lives outside test/ proper
+    // (e.g. a package's dual-mode database bootstrap used by both test/
+    // and bench/) but has the same justification: it never ships in a
+    // published package (excluded from every tsconfig.build.json).
+    files: ["**/test/**", "**/test-support/**", "tooling/**", "apps/**"],
     languageOptions: {
       globals: { ...globals.node },
     },

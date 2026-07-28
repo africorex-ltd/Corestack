@@ -5,7 +5,6 @@
  * lock serialization between concurrent runners.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import postgres, { type Sql } from "postgres";
 import { isErr, isOk } from "@corestack/kernel";
 
@@ -16,19 +15,19 @@ import {
   ensureMigrationTrackingSchema,
   PostgresMigrationRunnerStore,
 } from "../../src/infrastructure/postgres-migration-runner-store.js";
+import { createTestDatabase, type TestDatabase } from "../../test-support/test-database.js";
 
-let container: StartedPostgreSqlContainer;
+let db: TestDatabase;
 let sql: Sql;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer("postgres:16-alpine").start();
-  sql = postgres(container.getConnectionUri(), { max: 5, onnotice: () => {} });
+  db = await createTestDatabase();
+  sql = db.sql;
   await ensureMigrationTrackingSchema(sql);
 }, 120_000);
 
 afterAll(async () => {
-  await sql?.end();
-  await container?.stop();
+  await db?.close();
 });
 
 async function migration(module: string, version: number, description: string, body: string) {
@@ -159,8 +158,8 @@ describe("PostgresMigrationRunnerStore + runMigrations (E03-T02 integration)", (
     await resetModule("it-tenancy");
     // Two separate connection pools, simulating two separate app instances
     // booting simultaneously.
-    const sqlA = postgres(container.getConnectionUri(), { max: 5, onnotice: () => {} });
-    const sqlB = postgres(container.getConnectionUri(), { max: 5, onnotice: () => {} });
+    const sqlA = postgres(db.connectionString, { max: 5, onnotice: () => {} });
+    const sqlB = postgres(db.connectionString, { max: 5, onnotice: () => {} });
     const storeA = new PostgresMigrationRunnerStore(sqlA);
     const storeB = new PostgresMigrationRunnerStore(sqlB);
 

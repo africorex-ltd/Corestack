@@ -58,7 +58,7 @@ built so far — noted for that task, not built now.
 
 ## Testing
 
-**3 real-Postgres integration tests** (Testcontainers), one per named
+**3 real-Postgres integration tests** (via the dual-mode test-database bootstrap), one per named
 scenario, run in the same CI integration lane as every other Postgres
 adapter test in this package (`tooling/ci/integration-manifest.json`
 already covers `@corestack/platform` broadly — no manifest change needed

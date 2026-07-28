@@ -10,24 +10,23 @@
  * docs/quality/architecture-benchmarks/outbox-benchmark-methodology.md.
  */
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import postgres, { type Sql } from "postgres";
+import type { Sql } from "postgres";
 
 import { ensureOutboxSchema } from "../src/infrastructure/postgres-outbox-schema.js";
 import { maintainOutboxPartitions } from "../src/infrastructure/postgres-outbox-partition-maintenance.js";
+import { createTestDatabase, type TestDatabase } from "../test-support/test-database.js";
 import { measure, writeBaseline } from "./harness.js";
 
-let container: StartedPostgreSqlContainer;
+let db: TestDatabase;
 let sql: Sql;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer("postgres:16-alpine").start();
-  sql = postgres(container.getConnectionUri(), { max: 5, onnotice: () => {} });
+  db = await createTestDatabase();
+  sql = db.sql;
 }, 120_000);
 
 afterAll(async () => {
-  await sql?.end();
-  await container?.stop();
+  await db?.close();
 });
 
 beforeEach(async () => {

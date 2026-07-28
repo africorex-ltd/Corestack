@@ -31,6 +31,15 @@
   implemented only when local verification is possible (CI-only verification
   of DB code rejected as inadequate feedback). **Founder action: install
   Docker Desktop (or provide a reachable Postgres 16 + `DATABASE_URL`).**
+  **Resolved 2026-07-28:** after Docker Desktop broke a second time mid-epic
+  (installation directory left in an unusable state, root cause unknown),
+  the founder provided a local PostgreSQL 18.4 instance instead. A dual-mode
+  database bootstrap (`test-support/test-database.ts`) now targets either
+  a local instance via `DATABASE_URL` or Testcontainers when unset — see
+  [postgres-18-compatibility.md](../../platform/postgres-18-compatibility.md)
+  for the compatibility verification this required, and this package's
+  README's Testing guide for how the two modes work. Docker is no longer a
+  blocker for any Postgres-backed task on this machine.
 
 ## 3. Architecture-rule verification
 

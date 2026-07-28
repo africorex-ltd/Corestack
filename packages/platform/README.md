@@ -263,8 +263,8 @@ for (const moduleName of ["tenancy", "auth"]) {
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test                # 107 tests, no Docker required
-pnpm --filter @corestack/platform test:integration     # +7 tests, real Postgres via Testcontainers
+pnpm --filter @corestack/platform test                # 144 tests, no database required
+pnpm --filter @corestack/platform test:integration     # +40 tests, real Postgres — see below
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -281,11 +281,26 @@ import {
 } from "@corestack/platform/testing";
 ```
 
-Postgres-backed capabilities (T02 now; T10+ later) need Docker
-(Testcontainers) and are wired into the `test:integration` lane, not
-`test` — see [tooling/ci/integration-manifest.json](../../tooling/ci/integration-manifest.json),
+Postgres-backed capabilities (T02, T10-T14, T03) are wired into the
+`test:integration` lane, not `test` — see
+[tooling/ci/integration-manifest.json](../../tooling/ci/integration-manifest.json),
 which every such capability must be added to (and CI enforces the match
 exactly).
+
+`test:integration` targets Postgres through a dual-mode bootstrap
+(`test-support/test-database.ts`), never Testcontainers directly:
+
+- **`DATABASE_URL` set** (local development): connects to that Postgres
+  instance and creates/drops a throwaway scratch database per test file —
+  no Docker required. Verified against a local PostgreSQL 18.4 instance;
+  see [docs/platform/postgres-18-compatibility.md](../../docs/platform/postgres-18-compatibility.md).
+- **`DATABASE_URL` unset** (CI, or no local Postgres): starts a fresh
+  `postgres:16-alpine` Testcontainer per test file instead, unchanged
+  from this package's original approach.
+
+Both modes give every test file its own isolated database — `platform.*`
+inside it is still exactly the same schema, so no test code differs
+between modes.
 
 ## Common pitfalls
 
@@ -332,7 +347,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 107 unit tests (no Docker) + 7 real-Postgres integration tests across 9 capabilities                |
+| Testability     | High — 144 unit tests (no database) + 40 real-Postgres integration tests across the shipped capabilities   |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

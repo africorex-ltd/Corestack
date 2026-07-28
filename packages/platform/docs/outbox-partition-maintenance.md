@@ -118,7 +118,7 @@ with zero expected consumers, the dangerous no-checkpoint-row case
 blocks, a checkpoint short of the boundary blocks, a checkpoint exactly
 at the boundary is sufficient, one lagging consumer among several blocks
 the whole partition, and multiple partitions evaluated independently in
-one call); **7 real-Postgres integration tests** (Testcontainers)
+one call); **7 real-Postgres integration tests** (via the dual-mode test-database bootstrap)
 proving: create-ahead genuinely creates the next 2 months beyond what
 E03-T10's bootstrap left, idempotent re-runs create nothing new, omitting
 `retentionMonths` never drops even a manufactured old partition, the

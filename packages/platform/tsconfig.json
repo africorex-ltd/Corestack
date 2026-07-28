@@ -1,4 +1,4 @@
 {
   "extends": "@corestack/tsconfig/library.json",
-  "include": ["src", "test", "bench"]
+  "include": ["src", "test", "bench", "test-support"]
 }

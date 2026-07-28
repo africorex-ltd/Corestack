@@ -92,7 +92,7 @@ calls it (the CLI, later).
 ordering, partial-application, no-op-when-current, both drift scenarios,
 chain-checksum accumulation, and same-module-serializes /
 different-modules-don't via the fake's in-process mutex; **7 real-Postgres
-integration tests** (Testcontainers) proving actual DDL execution, real
+integration tests** (via the dual-mode test-database bootstrap) proving actual DDL execution, real
 transactional rollback, real drift detection against a corrupted row, real
 cross-connection advisory-lock serialization, and real `CREATE INDEX
 CONCURRENTLY` success outside a transaction. Two genuine bugs were caught

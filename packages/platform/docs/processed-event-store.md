@@ -91,7 +91,7 @@ instrumenting on its own.
 
 ## Testing
 
-**7 real-Postgres integration tests** (Testcontainers): the port's basic
+**7 real-Postgres integration tests** (via the dual-mode test-database bootstrap): the port's basic
 contract (`hasProcessed` false then true), `markProcessed` idempotency,
 and — mirroring the exact assertions kernel's own test suite already
 makes for `InMemoryProcessedEventStore`
