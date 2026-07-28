@@ -142,6 +142,18 @@ single combined interface would force every caller to either implement
 every dimension or pass an awkward partial object. Small ports let a
 caller wire exactly the dimensions it has real infrastructure for.
 
+Why is `countBacklog` a single `COALESCE`-based query rather than a
+`getCheckpoint()` call followed by a `count(*)`? Two separate statements
+leave a window where a concurrent `advanceCheckpoint` (the relay
+advancing past the same checkpoint) lands between the read and the
+count, producing a backlog number relative to a cursor that's already
+stale — readiness could report `degraded`/`failing` for a consumer that
+is, by the time the response is read, already caught up. Folding the
+checkpoint lookup into the same statement as the count (via `COALESCE`
+against a `-infinity` sentinel for the no-checkpoint case) removes that
+window entirely; verified against PostgreSQL 18 for both the
+no-checkpoint and existing-checkpoint branches before landing.
+
 Why does `countBacklog` land as an **optional** member of the
 already-shipped `OutboxRelayStore` port rather than a required one? A
 required addition to an exported interface is a breaking change for any

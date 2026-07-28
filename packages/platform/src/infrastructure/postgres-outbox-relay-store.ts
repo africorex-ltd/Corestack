@@ -63,16 +63,21 @@ export class PostgresOutboxRelayStore implements OutboxRelayStore {
     `;
   }
 
-  /** E03-T23's readiness backlog check — same row-value cursor comparison as `fetchBatch`, counted rather than fetched. */
+  /**
+   * E03-T23's readiness backlog check — same row-value cursor comparison as
+   * `fetchBatch`, counted rather than fetched. The checkpoint lookup and the
+   * count are folded into a single statement (rather than `getCheckpoint()`
+   * followed by a second query) so a concurrent `advanceCheckpoint` between
+   * the two reads can't produce a count relative to an already-stale cursor.
+   */
   async countBacklog(consumer: string): Promise<number> {
-    const checkpoint = await this.getCheckpoint(consumer);
-    const rows =
-      checkpoint === null
-        ? await this.#sql<{ count: string }[]>`SELECT count(*) FROM platform.outbox`
-        : await this.#sql<{ count: string }[]>`
-            SELECT count(*) FROM platform.outbox
-            WHERE (occurred_at, id) > (${checkpoint.occurredAt}::timestamptz, ${checkpoint.id}::uuid)
-          `;
+    const rows = await this.#sql<{ count: string }[]>`
+      SELECT count(*) FROM platform.outbox o
+      WHERE (o.occurred_at, o.id) > COALESCE(
+        (SELECT (last_occurred_at, last_event_id) FROM platform.outbox_checkpoints WHERE consumer = ${consumer}),
+        ('-infinity'::timestamptz, '00000000-0000-0000-0000-000000000000'::uuid)
+      )
+    `;
     return Number(rows[0]?.count ?? 0);
   }
 }
