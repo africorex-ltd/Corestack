@@ -13,6 +13,29 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
 
 ### Foundation phase (pre-release)
 
+- **Platform Maturity Mode:** the kernel's Release Candidate certification
+  marks a permanent shift — the kernel is now stability-first (every
+  proposed kernel change must justify why it can't live outside the
+  kernel). New standing institutional structures: `docs/decisions/`
+  (day-to-day engineering decisions below ADR weight), `docs/engineering/lessons/`
+  (per-epic institutional knowledge), `docs/quality/architecture-benchmarks/`
+  (periodic subsystem structure reports). Every infrastructure component
+  going forward ships as a documented "product": contract, failure modes,
+  retry/timeout/cancellation posture, concurrency guarantees, performance
+  budget, security considerations, and an explicit observability scoping
+  decision — even when that decision is "not applicable, here's why."
+
+- **E03-T01 migration format & loader:** new `@corestack/platform` package
+  (Clean Architecture layered: domain parsing → application port/loader →
+  filesystem adapter → `/testing` fake subpath). Plain-SQL migration files
+  with a `-- @key: value` header (required `@description`/`@lock-impact`,
+  optional `@concurrent`), SHA-256 whole-file checksums, and strict
+  sequential-version validation with aggregated (not fail-fast) error
+  reporting. Module names allow hyphens (`acme-crm`) for third-party
+  modules per Architecture §24. 39 tests, zero Docker dependency (pure
+  filesystem, no Postgres yet). Full component spec:
+  [packages/platform/docs/migration-loader.md](packages/platform/docs/migration-loader.md).
+
 - **Audit remediation + Continuous Quality Governance:** all four P0 findings
   fixed with regression tests (CI silent-success guards; `idempotentHandler`
   now genuinely at-least-once; `InMemoryUnitOfWork` isolates consumer

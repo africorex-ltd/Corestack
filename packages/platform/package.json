@@ -1,0 +1,54 @@
+{
+  "name": "@corestack/platform",
+  "version": "0.1.0",
+  "description": "CoreStack platform infrastructure: migration engine, transactional outbox, composition root, and tenant-isolation building blocks shared by every module.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/africorex-ltd/Corestack.git",
+    "directory": "packages/platform"
+  },
+  "homepage": "https://github.com/africorex-ltd/Corestack/tree/main/packages/platform#readme",
+  "bugs": "https://github.com/africorex-ltd/Corestack/issues",
+  "keywords": [
+    "corestack",
+    "saas",
+    "migrations",
+    "outbox",
+    "composition-root"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@corestack/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@corestack/tsconfig": "workspace:*",
+    "@types/node": "^20.19.9",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

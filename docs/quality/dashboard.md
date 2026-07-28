@@ -2,12 +2,18 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-28** (post audit-remediation, pre-E03).
+> estimated. Last update: **2026-07-28** (E03 in progress: T01 complete).
 
 ## Standing policy
 
 **No new features while unresolved P0 findings exist.** (Governance §7.4 —
 anchored here; also stated in CONTRIBUTING.) Current P0 count is the gate.
+**Platform Maturity Mode is active:** the kernel is stability-first; every
+infrastructure component built from E03 onward ships as a documented
+product (contract, failure modes, retry/timeout/cancellation, concurrency,
+performance, security, observability scoping) — see
+[packages/platform/docs/migration-loader.md](../../packages/platform/docs/migration-loader.md)
+for the first instance of this standard.
 
 ## Findings
 
@@ -19,12 +25,13 @@ anchored here; also stated in CONTRIBUTING.) Current P0 count is the gate.
 
 ## Test & coverage
 
-| Metric               | Value                                                                               |
-| -------------------- | ----------------------------------------------------------------------------------- |
-| Test files / tests   | 14 files / **93 tests** (kernel 66 · lint fixtures 12 · architecture fitness 15)    |
-| Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met) |
-| Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                        |
-| Unit-suite duration  | ~11 s repo-wide (budget < 30 s)                                                     |
+| Metric               | Value                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| Test files / tests   | 17 files / **133 tests** (kernel 66 · lint fixtures 12 · architecture fitness 16 · platform 39) |
+| Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)             |
+| Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                |
+| Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                    |
+| Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                     |
 
 ## Architecture & API
 
