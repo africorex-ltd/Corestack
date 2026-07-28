@@ -43,6 +43,20 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   Diagram, prose, and the cross-package fitness rule updated together so
   the enforced rule and the documented rule can never diverge again.
 
+- **E03-T24 graceful shutdown orchestration:** generic `shutdownGracefully`
+  over a `Drainable` port — stop-intake for every registered component
+  first, then drain each **in strict registration order**, each bounded by
+  its own timeout so one stuck component can never hang the whole shutdown.
+  Never throws; every outcome (`drained`/`timed_out`/`failed`) is captured
+  in a structured report instead. Deliberately sequential rather than
+  parallel: shutdown order usually encodes real dependencies (stop the
+  HTTP listener before draining the outbox relay it fed, before closing the
+  DB pool the relay reads from) that a generic orchestrator can't safely
+  reorder without dependency metadata it doesn't have. 8 new tests (85
+  total in platform), including drain-order and stop-intake-before-drain
+  proven by actual event interleaving, not just "both ran." Full component
+  spec: [packages/platform/docs/graceful-shutdown.md](packages/platform/docs/graceful-shutdown.md).
+
 - **E03-T21 `createCoreStack()` composition helper:** wires already-built
   `ModuleInstance`s (the adopter's own script calls each module's factory
   directly — explicit, no reflection, per ADR-0014) into one `CoreStack`:

@@ -44,3 +44,11 @@ export type {
   CoreStack,
 } from "./application/create-core-stack.js";
 export { createCoreStack } from "./application/create-core-stack.js";
+
+export type {
+  Drainable,
+  GracefulShutdownOptions,
+  ShutdownOutcome,
+  ShutdownReport,
+} from "./application/graceful-shutdown.js";
+export { shutdownGracefully } from "./application/graceful-shutdown.js";

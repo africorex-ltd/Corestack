@@ -5,8 +5,8 @@
 > [decision 0001](../../docs/decisions/0001-platform-package.md)).
 > Grows task-by-task per [blueprint E03](../../docs/engineering/01-foundation.md);
 > the migration loader (E03-T01), module lifecycle contract (E03-T20),
-> config validation framework (E03-T22), and `createCoreStack()` (E03-T21)
-> exist so far.
+> config validation framework (E03-T22), `createCoreStack()` (E03-T21), and
+> graceful shutdown orchestration (E03-T24) exist so far.
 
 ## What this package is
 
@@ -45,9 +45,10 @@ performance budget, security considerations, and observability scoping
 | Module lifecycle contract                       | ✅ E03-T20     | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)   |
 | Config validation framework                     | ✅ E03-T22     | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md) |
 | `createCoreStack()` composition helper          | ✅ E03-T21     | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                               |
+| Graceful shutdown orchestration                 | ✅ E03-T24     | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                            |
 | Migration runner (`platform.module_migrations`) | 📋 E03-T02     | —                                                                                                              |
 | Transactional outbox (writer + relay)           | 📋 E03-T10–T14 | —                                                                                                              |
-| Health/readiness · graceful shutdown            | 📋 E03-T23–T24 | —                                                                                                              |
+| Health/readiness framework                      | 📋 E03-T23     | (needs the outbox relay, T12, to test readiness-flip against)                                                  |
 | RLS / tenant-isolation harness                  | 📋 E03-T30–T33 | —                                                                                                              |
 | Shared Postgres adapter base                    | 📋 E03-T40–T43 | —                                                                                                              |
 
@@ -173,10 +174,31 @@ const stack = createCoreStack({ eventBus, modules: { widgets } });
 console.log(await stack.health()); // { status: "healthy", modules: { widgets: { status: "healthy" } } }
 ```
 
+## Example usage (graceful shutdown)
+
+```ts
+import { shutdownGracefully, type Drainable } from "@corestack/platform";
+
+const httpListener: Drainable = {
+  name: "http-listener",
+  stopIntake: async () => server.close(),
+  drain: async () => server.closeAllConnections(),
+};
+
+process.on("SIGTERM", async () => {
+  const report = await shutdownGracefully({
+    drainables: [httpListener /* , outboxRelay, jobQueue, dbPool — arrive with T12+ */],
+    drainTimeoutMs: 10_000,
+    logger,
+  });
+  process.exit(report.clean ? 0 : 1);
+});
+```
+
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test        # 77 tests, no Docker required
+pnpm --filter @corestack/platform test        # 85 tests, no Docker required
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -233,7 +255,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 77 tests across 6 capabilities, zero Docker dependency for what exists so far                       |
+| Testability     | High — 85 tests across 7 capabilities, zero Docker dependency for what exists so far                       |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |
