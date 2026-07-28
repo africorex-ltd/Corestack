@@ -46,21 +46,22 @@ performance budget, security considerations, and observability scoping
 
 ## Public API guide
 
-| Capability                                             | Status              | Entry point                                                                                                     |
-| ------------------------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Migration format & loader                              | ✅ E03-T01          | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md)  |
-| Module lifecycle contract                              | ✅ E03-T20          | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)    |
-| Config validation framework                            | ✅ E03-T22          | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md)  |
-| `createCoreStack()` composition helper                 | ✅ E03-T21          | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                                |
-| Graceful shutdown orchestration                        | ✅ E03-T24          | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                             |
-| Context resolution (ADR-0008 layer 2)                  | ✅ E03-T32          | `resolveContext`, `MembershipLookup` — see [component spec](docs/resolve-context.md)                            |
-| Migration runner (`platform.module_migrations`)        | ✅ E03-T02          | `runMigrations`, `PostgresMigrationRunnerStore` (`./postgres`) — see [component spec](docs/migration-runner.md) |
-| Outbox schema bootstrap                                | ✅ E03-T10          | `ensureOutboxSchema` (`./postgres`) — see [component spec](docs/outbox-schema.md)                               |
-| Outbox writer                                          | ✅ E03-T11          | `writeOutboxEvents`, `createOutboxStaging` (`./postgres`) — see [component spec](docs/outbox-writer.md)         |
-| Outbox relay + crash-consistency + idempotent consumer | 📋 E03-T12–T14      | —                                                                                                               |
-| Health/readiness framework                             | 📋 E03-T23          | (needs the outbox relay, T12, to test readiness-flip against)                                                   |
-| RLS / tenant-isolation harness                         | 📋 E03-T30–T31, T33 | —                                                                                                               |
-| Shared Postgres adapter base                           | 📋 E03-T40–T43      | —                                                                                                               |
+| Capability                                         | Status              | Entry point                                                                                                     |
+| -------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Migration format & loader                          | ✅ E03-T01          | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md)  |
+| Module lifecycle contract                          | ✅ E03-T20          | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)    |
+| Config validation framework                        | ✅ E03-T22          | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md)  |
+| `createCoreStack()` composition helper             | ✅ E03-T21          | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                                |
+| Graceful shutdown orchestration                    | ✅ E03-T24          | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                             |
+| Context resolution (ADR-0008 layer 2)              | ✅ E03-T32          | `resolveContext`, `MembershipLookup` — see [component spec](docs/resolve-context.md)                            |
+| Migration runner (`platform.module_migrations`)    | ✅ E03-T02          | `runMigrations`, `PostgresMigrationRunnerStore` (`./postgres`) — see [component spec](docs/migration-runner.md) |
+| Outbox schema bootstrap                            | ✅ E03-T10          | `ensureOutboxSchema` (`./postgres`) — see [component spec](docs/outbox-schema.md)                               |
+| Outbox writer                                      | ✅ E03-T11          | `writeOutboxEvents`, `createOutboxStaging` (`./postgres`) — see [component spec](docs/outbox-writer.md)         |
+| Outbox relay                                       | ✅ E03-T12          | `OutboxRelay`, `PostgresOutboxRelayStore` (`./postgres`) — see [component spec](docs/outbox-relay.md)           |
+| Crash-consistency test suite + idempotent consumer | 📋 E03-T13–T14      | —                                                                                                               |
+| Health/readiness framework                         | 📋 E03-T23          | (needs the outbox relay, T12, to test readiness-flip against)                                                   |
+| RLS / tenant-isolation harness                     | 📋 E03-T30–T31, T33 | —                                                                                                               |
+| Shared Postgres adapter base                       | 📋 E03-T40–T43      | —                                                                                                               |
 
 ## Example usage (migration loader)
 

@@ -137,6 +137,36 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   boundary. Full component spec:
   [packages/platform/docs/outbox-writer.md](packages/platform/docs/outbox-writer.md).
 
+- **E03-T12 outbox relay:** `OutboxRelay` polls `platform.outbox` on a
+  per-consumer cursor (`platform.outbox_checkpoints`) and dispatches
+  matching events to that consumer's handler — reusing the kernel
+  `EventBus`'s own `EventSubscription` shape verbatim, so a module's
+  consumer registration doesn't need to know whether it's served by the
+  in-process bus or this durable relay. Checkpoint advances only past
+  events fully handled: the first handler failure in a batch stops
+  advancement there, so the next round redelivers from the failed event
+  onward, never from the start — and one consumer's permanent failure
+  never stalls another's progress on the same stream. No checkpoint row
+  means "never processed anything," backfilling the whole outbox for a
+  newly registered consumer, mirroring T02's convention. The Postgres
+  adapter's cursor is a genuine row-value comparison —
+  `WHERE (occurred_at, id) > ($1, $2)`, not two `AND`-ed columns, which
+  would silently drop an event sharing the checkpoint's exact timestamp.
+  Implements the `Drainable` port from E03-T24's graceful shutdown
+  (`stopIntake`/`drain`), so the relay finishes an in-flight round's
+  checkpoint before the process exits. 6 new domain tests (the read-side
+  `fromOutboxRow` mapping, including an exact round-trip against T11's
+  `toOutboxRow`) plus 8 pure orchestration tests (in-memory fake) plus
+  **4 real-Postgres integration tests** (Testcontainers) proving no event
+  is skipped across a full restart — relay and store objects discarded
+  and rebuilt between rounds, not just re-invoking a method on one
+  long-lived instance — correct redelivery scope after a simulated
+  mid-batch crash, the row-value cursor case (two events at the identical
+  instant, deliberately ordered so the second-created one's id sorts
+  lower), and `drain()` letting an in-flight round persist before
+  returning. Full component spec:
+  [packages/platform/docs/outbox-relay.md](packages/platform/docs/outbox-relay.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

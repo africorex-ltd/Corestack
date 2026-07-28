@@ -20,3 +20,5 @@ export {
   writeOutboxEvents,
   createOutboxStaging,
 } from "../infrastructure/postgres-outbox-writer.js";
+
+export { PostgresOutboxRelayStore } from "../infrastructure/postgres-outbox-relay-store.js";

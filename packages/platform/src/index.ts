@@ -63,8 +63,15 @@ export { computeMonthlyPartitionBounds } from "./domain/outbox-partition.js";
 
 export { assertSafeSqlIdentifier } from "./domain/sql-identifier.js";
 
-export type { OutboxEventRow } from "./domain/outbox-event.js";
-export { toOutboxRow } from "./domain/outbox-event.js";
+export type { OutboxEventRow, OutboxTableRow } from "./domain/outbox-event.js";
+export { toOutboxRow, fromOutboxRow } from "./domain/outbox-event.js";
+
+export type {
+  RelayCursor,
+  OutboxRelayStore,
+  OutboxRelayOptions,
+} from "./application/outbox-relay.js";
+export { OutboxRelay } from "./application/outbox-relay.js";
 
 export type {
   ModuleMigrationState,
