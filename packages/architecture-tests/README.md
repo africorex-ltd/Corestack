@@ -19,7 +19,7 @@ trusting a PR reviewer's memory, it belongs here.
 test/
   helpers.mjs           workspace-walking + import-extraction utilities (zero deps)
   cycles.test.mjs        no circular imports within any package's src/
-  cross-package.test.mjs no deep-imports/relative-escapes; kernel-only cross-module runtime deps
+  cross-package.test.mjs no deep-imports/relative-escapes; cross-module runtime deps limited to the shared bases (kernel, platform — ADR-0016)
   manifest-rules.test.mjs ESM-only, MIT, engines, exports, LICENSE-in-tarball, kernel zero-deps
 ```
 
@@ -58,9 +58,9 @@ file, with a one-line comment explaining why — never loosen a rule silently.
   (Architecture §1 skeleton convention) is correctly invisible to this
   suite until real code lands.
 - **Import-cycle detection is per-package**, not repo-wide — cross-package
-  cycles are structurally impossible given the kernel-only dependency rule
-  this same suite enforces, so a separate whole-repo cycle check would be
-  redundant.
+  cycles are structurally impossible given the shared-bases-only dependency
+  rule this same suite enforces (ADR-0016), so a separate whole-repo cycle
+  check would be redundant.
 
 ## Extension points
 

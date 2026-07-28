@@ -21,6 +21,7 @@ supersedes the old one.
 | [0013](0013-modules-are-the-plugin-system.md)          | Modules are the plugin system; no runtime loading            | Accepted |
 | [0014](0014-module-lifecycle-contract.md)              | Uniform module lifecycle contract                            | Accepted |
 | [0015](0015-zero-downtime-upgrade-contract.md)         | Zero-downtime N/N+1 upgrade contract                         | Accepted |
+| [0016](0016-platform-as-second-shared-base.md)         | `@corestack/platform` is a second shared dependency base     | Accepted |
 
 ## Writing an ADR
 

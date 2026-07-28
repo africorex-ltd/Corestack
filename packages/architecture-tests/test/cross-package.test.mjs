@@ -1,10 +1,11 @@
-// Fitness: cross-package boundaries (AUD-12; Architecture §47).
+// Fitness: cross-package boundaries (AUD-12; Architecture §47; ADR-0016).
 // - No deep imports into another package's dist/ or src/ via specifier.
 // - No relative imports escaping a package's own directory.
 // - Runtime cross-module imports between @corestack modules are forbidden
-//   except the kernel and a module's own subpaths; the sanctioned exception
-//   is `/contracts` subpaths (types only) — enforced structurally here,
-//   types-only-ness enforced at review + lint (E01-T02.4 hardens further).
+//   except the two shared bases (kernel, platform) and a module's own
+//   subpaths; the sanctioned exception is `/contracts` subpaths (types
+//   only) — enforced structurally here, types-only-ness enforced at review
+//   + lint (E01-T02.4 hardens further).
 
 import { describe, expect, it } from "vitest";
 import { join, relative, isAbsolute } from "node:path";
@@ -46,14 +47,24 @@ describe("cross-package import boundaries", () => {
     });
   }
 
-  it("runtime dependencies between @corestack packages are kernel-only (Architecture §47)", () => {
+  it("runtime dependencies between @corestack packages point only at the shared bases (Architecture §47; ADR-0016)", () => {
+    // Two shared bases: kernel (zero-dep, runtime-agnostic) and platform
+    // (I/O-capable composition/migration/outbox tooling — depends only on
+    // kernel itself). Every other module may depend on either or both, but
+    // never on another module, and platform may never depend downward on
+    // a module.
+    const SHARED_BASES = new Set(["@corestack/kernel", "@corestack/platform"]);
     const offenders = [];
     for (const pkg of packages) {
       const deps = Object.keys(pkg.manifest.dependencies ?? {});
       for (const dep of deps) {
-        if (dep.startsWith("@corestack/") && dep !== "@corestack/kernel" && moduleNames.has(dep)) {
-          offenders.push(`${pkg.manifest.name} → ${dep}`);
-        }
+        if (!dep.startsWith("@corestack/") || !moduleNames.has(dep) || dep === pkg.manifest.name)
+          continue;
+        const allowed =
+          pkg.manifest.name === "@corestack/platform"
+            ? dep === "@corestack/kernel"
+            : SHARED_BASES.has(dep);
+        if (!allowed) offenders.push(`${pkg.manifest.name} → ${dep}`);
       }
     }
     expect(offenders, offenders.join("\n")).toEqual([]);

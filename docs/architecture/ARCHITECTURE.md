@@ -885,14 +885,23 @@ directions, machine-enforced (§4):
 ```
                           @corestack/kernel
                                  ▲
+                          @corestack/platform (composition root, migrations,
+                                 ▲              outbox — I/O-capable, unlike kernel)
         ┌──────────┬─────────┬───┴────┬──────────┬─────────────┐
       auth      tenancy    rbac    billing     audit    notifications/jobs/webhooks
-        ▲          ▲         ▲        ▲          │  (modules depend ONLY on kernel;
-        └──────────┴────┬────┴────────┘          │   cross-module = events + ids,
-                        │                        │   never package imports*)
-                @corestack/cli, @corestack/client, apps/reference-nextjs
+        ▲          ▲         ▲        ▲          │  (modules depend ONLY on kernel
+        └──────────┴────┬────┴────────┘          │   + platform; cross-module =
+                        │                        │   events + ids, never package
+                @corestack/cli, @corestack/client, apps/reference-nextjs   imports*)
                 (composition consumers — may depend on any module)
 ```
+
+**`@corestack/platform` is a second shared dependency base** (ADR-0016,
+added after this section was first drafted): it houses the composition
+root, migration engine, and transactional outbox — infrastructure every
+module needs but that cannot live in the runtime-agnostic, zero-dependency
+kernel. Platform itself depends only on kernel, preserving the inward-only
+shape of the graph.
 
 \* The one nuance: modules may depend on another module's **published contract
 types** (event/DTO types re-exported through a `@corestack/<module>/contracts`
