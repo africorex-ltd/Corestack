@@ -107,4 +107,23 @@ describe("FixtureWidgetRepository over a directly-authenticated app-role connect
     const widgets = await repo.list(context);
     expect(widgets.map((w) => w.note)).toEqual(["org-b-widget"]);
   });
+
+  it("a raw query on the same pool outside runOrgScopedQuery fails loudly rather than leaking rows", async () => {
+    // T30's finding: once this pooled connection has set app.current_org
+    // in one transaction (via the repo call above), a later transaction on
+    // the same pool that skips runOrgScopedQuery sees the reset value, not
+    // NULL, and the un-hedged tenant_isolation policy throws. This is the
+    // production connection shape (directly authenticated as the app
+    // role), not the superuser-session shape T30's own tests exercised —
+    // proving the fail-loud claim actually holds here, not just there.
+    const repo = new FixtureWidgetRepository(appRoleSql);
+    const context = requireOrgScoped(
+      createContext({ actor: { type: "user", id: "u1" }, organizationId: ORG_A }, ids()),
+    );
+    await repo.list(context);
+
+    await expect(appRoleSql`SELECT note FROM tenant_fixture.widgets`).rejects.toThrow(
+      /unrecognized configuration parameter|invalid input syntax/,
+    );
+  });
 });

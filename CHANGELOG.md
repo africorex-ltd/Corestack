@@ -351,8 +351,11 @@ LOCAL` syntax outright. Along the way, verified a genuinely surprising
   `ReservedSql` type claims `.begin()` (`extends Sql`) but the method is
   `undefined` at runtime in the installed version — avoided rather than
   worked around, since the directly-authenticated-connection design was
-  simpler and gave stronger evidence anyway. 5 new unit/type tests + 2 new
-  integration tests (platform now at 184 unit + 57 integration). Full
+  simpler and gave stronger evidence anyway. A third integration test
+  (added after review) proves the fail-loud behavior holds on this same
+  directly-authenticated connection shape, not only the superuser `SET
+ROLE` session T30's own tests used. 5 new unit/type tests + 3 new
+  integration tests (platform now at 184 unit + 58 integration). Full
   component spec:
   [packages/platform/docs/org-scoped-repository.md](packages/platform/docs/org-scoped-repository.md).
 

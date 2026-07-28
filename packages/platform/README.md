@@ -266,7 +266,7 @@ for (const moduleName of ["tenancy", "auth"]) {
 
 ```bash
 pnpm --filter @corestack/platform test                # 184 tests, no database required
-pnpm --filter @corestack/platform test:integration     # +57 tests, real Postgres — see below
+pnpm --filter @corestack/platform test:integration     # +58 tests, real Postgres — see below
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -349,7 +349,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 184 unit tests (no database) + 57 real-Postgres integration tests across the shipped capabilities   |
+| Testability     | High — 184 unit tests (no database) + 58 real-Postgres integration tests across the shipped capabilities   |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

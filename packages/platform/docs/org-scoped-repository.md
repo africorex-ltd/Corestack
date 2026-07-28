@@ -106,10 +106,15 @@ by the `typecheck` script (`tsc --noEmit`, which includes `test/`) — the
 runtime assertion in the `it()` block only confirms both functions exist,
 it never calls the type-invalid one.
 
-**2 real-Postgres integration tests**
+**3 real-Postgres integration tests**
 (`test/integration/org-scoped-repository.postgres.test.ts`): the fixture
 repository, over a directly-authenticated app-role connection, returns
-exactly one organization's row for a context scoped to that organization.
+exactly one organization's row for a context scoped to that organization
+(both directions); a third test then runs a raw query on that same pool
+**outside** `runOrgScopedQuery` and asserts it fails loudly — proving
+T30's fail-loud finding holds for the actual production connection shape
+(directly authenticated as the app role), not only for the superuser
+`SET ROLE` session T30's own tests used.
 
 ## Design rationale
 
