@@ -11,7 +11,9 @@
 > T30 RLS harness done — see
 > [tenant-isolation.md](../../packages/platform/docs/tenant-isolation.md);
 > T31 org-scoped repository base done — see
-> [org-scoped-repository.md](../../packages/platform/docs/org-scoped-repository.md)).
+> [org-scoped-repository.md](../../packages/platform/docs/org-scoped-repository.md);
+> T33 purge protocol framework done — see
+> [purge-protocol.md](../../packages/platform/docs/purge-protocol.md)).
 
 ## Standing policy
 
@@ -36,7 +38,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 47 files / **338 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 184 unit + 58 integration) |
+| Test files / tests   | 49 files / **347 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 60 integration) |
 | Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |

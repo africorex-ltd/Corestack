@@ -61,7 +61,7 @@ performance budget, security considerations, and observability scoping
 | Health/readiness computation                                 | ✅ E03-T23     | `checkLiveness`, `checkReadiness`, `RelayLagRecorder`, `PostgresDatabasePing`/`PostgresMigrationsStatus` (`./postgres`) — see [component spec](docs/health-readiness.md) |
 | RLS / tenant-isolation harness                               | ✅ E03-T30     | `buildTenantIsolationDdl`, `ensureTenancyRoles`/`withOrgContext` (`./postgres`) — see [component spec](docs/tenant-isolation.md)                                         |
 | Org-scoped repository base utilities                         | ✅ E03-T31     | `OrgScopedContext`, `requireOrgScoped`, `runOrgScopedQuery` (`./postgres`) — see [component spec](docs/org-scoped-repository.md)                                         |
-| Purge protocol framework                                     | 📋 E03-T33     | —                                                                                                                                                                        |
+| Purge protocol framework                                     | ✅ E03-T33     | `registerPurgeHandler`, `PurgeHandler`, `ORGANIZATION_PURGE_REQUESTED_EVENT` — see [component spec](docs/purge-protocol.md)                                              |
 | Shared Postgres adapter base                                 | 📋 E03-T40–T43 | —                                                                                                                                                                        |
 
 ## Example usage (migration loader)
@@ -265,8 +265,8 @@ for (const moduleName of ["tenancy", "auth"]) {
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test                # 184 tests, no database required
-pnpm --filter @corestack/platform test:integration     # +58 tests, real Postgres — see below
+pnpm --filter @corestack/platform test                # 191 tests, no database required
+pnpm --filter @corestack/platform test:integration     # +60 tests, real Postgres — see below
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -349,7 +349,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 184 unit tests (no database) + 58 real-Postgres integration tests across the shipped capabilities   |
+| Testability     | High — 191 unit tests (no database) + 60 real-Postgres integration tests across the shipped capabilities   |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

@@ -359,6 +359,25 @@ ROLE` session T30's own tests used. 5 new unit/type tests + 3 new
   component spec:
   [packages/platform/docs/org-scoped-repository.md](packages/platform/docs/org-scoped-repository.md).
 
+- **E03-T33 purge protocol framework:** `registerPurgeHandler` gives every
+  module a standard way to participate in organization purge (DB §15: "org
+  deletion fans out `organization.purge_requested`; every schema owns a
+  purge handler deleting its org's rows"). Deliberately composes
+  already-shipped primitives rather than introducing new ones: kernel's
+  `idempotentHandler` bound to `PostgresProcessedEventStore` (E03-T14)
+  gives exactly-once-per-redelivery semantics and durable completion
+  tracking with no new schema; `createCoreStack`'s existing duplicate
+  `(consumer, event)` detection (E03-T21) already rejects a double
+  registration once `registerPurgeHandler` gives it a per-module namespaced
+  consumer name (`${moduleName}:purge`) to compare. `organizationId` comes
+  off the event envelope (`DomainEvent.organizationId`), never a payload
+  field. 7 new unit tests + 2 new integration tests matching the
+  blueprint's exact acceptance criterion — "Fixture module's purge handler
+  invoked exactly once, idempotent on replay," proven durably against
+  Postgres, not an in-memory fake (platform now at 191 unit + 60
+  integration). Full component spec:
+  [packages/platform/docs/purge-protocol.md](packages/platform/docs/purge-protocol.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
