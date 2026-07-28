@@ -20,6 +20,7 @@ import type {
   MigrationRunnerStore,
   ModuleMigrationState,
 } from "../application/migration-runner.js";
+import { ensurePlatformSchema } from "./ensure-platform-schema.js";
 
 /**
  * Idempotently creates the `platform` schema and `platform.module_migrations`
@@ -30,7 +31,7 @@ import type {
  * same way, avoiding a chicken-and-egg dependency on itself).
  */
 export async function ensureMigrationTrackingSchema(sql: Sql): Promise<void> {
-  await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS platform`);
+  await ensurePlatformSchema(sql);
   await sql.unsafe(`
     CREATE TABLE IF NOT EXISTS platform.module_migrations (
       module text PRIMARY KEY,

@@ -9,3 +9,8 @@ export {
   PostgresMigrationRunnerStore,
   ensureMigrationTrackingSchema,
 } from "../infrastructure/postgres-migration-runner-store.js";
+
+export { ensurePlatformSchema } from "../infrastructure/ensure-platform-schema.js";
+
+export type { EnsureOutboxSchemaOptions } from "../infrastructure/postgres-outbox-schema.js";
+export { ensureOutboxSchema } from "../infrastructure/postgres-outbox-schema.js";

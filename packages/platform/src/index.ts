@@ -58,6 +58,11 @@ export { resolveContext } from "./application/resolve-context.js";
 
 export { computeChainChecksum, computeAdvisoryLockKey } from "./domain/chain-checksum.js";
 
+export type { PartitionBounds } from "./domain/outbox-partition.js";
+export { computeMonthlyPartitionBounds } from "./domain/outbox-partition.js";
+
+export { assertSafeSqlIdentifier } from "./domain/sql-identifier.js";
+
 export type {
   ModuleMigrationState,
   MigrationRunnerStore,

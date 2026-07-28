@@ -55,7 +55,8 @@ performance budget, security considerations, and observability scoping
 | Graceful shutdown orchestration                 | ✅ E03-T24          | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                             |
 | Context resolution (ADR-0008 layer 2)           | ✅ E03-T32          | `resolveContext`, `MembershipLookup` — see [component spec](docs/resolve-context.md)                            |
 | Migration runner (`platform.module_migrations`) | ✅ E03-T02          | `runMigrations`, `PostgresMigrationRunnerStore` (`./postgres`) — see [component spec](docs/migration-runner.md) |
-| Transactional outbox (writer + relay)           | 📋 E03-T10–T14      | —                                                                                                               |
+| Outbox schema bootstrap                         | ✅ E03-T10          | `ensureOutboxSchema` (`./postgres`) — see [component spec](docs/outbox-schema.md)                               |
+| Transactional outbox (writer + relay)           | 📋 E03-T11–T14      | —                                                                                                               |
 | Health/readiness framework                      | 📋 E03-T23          | (needs the outbox relay, T12, to test readiness-flip against)                                                   |
 | RLS / tenant-isolation harness                  | 📋 E03-T30–T31, T33 | —                                                                                                               |
 | Shared Postgres adapter base                    | 📋 E03-T40–T43      | —                                                                                                               |

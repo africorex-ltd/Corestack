@@ -73,6 +73,37 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   discovered debt. Full component spec:
   [packages/platform/docs/migration-runner.md](packages/platform/docs/migration-runner.md).
 
+- **E03-T10 outbox schema bootstrap:** `ensureOutboxSchema` idempotently
+  creates the ADR-0009 transactional outbox's three tables —
+  `platform.outbox` (partitioned monthly by `occurred_at`),
+  `platform.outbox_checkpoints`, `platform.processed_events` — plus both
+  required indexes, exactly per the approved Database §3 schema. Sequenced
+  ahead of T03 (partition maintenance): T03's own acceptance criteria
+  reference outbox checkpoint safety that doesn't exist until the outbox
+  itself is built, so T10–T14 (all P0) now precede T03 (P1) — an execution-
+  order call, not a contract redesign. Postgres requires the partition key
+  in any primary key on a partitioned table, so the physical PK is
+  `(id, occurred_at)` while `id` remains the sole logical identity — a
+  Postgres mechanics constraint, not a schema change. Bootstraps the
+  current month's partition plus one month ahead by default, so the
+  outbox is writable immediately without depending on the not-yet-built
+  T03 job. Optional `applicationRole` enforces append-only access by
+  revoking `UPDATE`/`DELETE` for a named role (full two-role model is
+  T30's job). New pure-domain helpers extracted for reuse:
+  `computeMonthlyPartitionBounds` and `assertSafeSqlIdentifier` (the
+  latter closes an injection path in the `REVOKE ... FROM ${role}`
+  statement); `ensurePlatformSchema` extracted from T02's adapter so both
+  components bootstrap the shared `platform` schema from one place. 13
+  new unit tests plus **5 real-Postgres integration tests**
+  (Testcontainers) proving idempotent re-bootstrap, genuine partitioning
+  (a row several months outside every bootstrapped partition is rejected
+  by Postgres itself), `processed_events`' composite-PK dedupe guarantee,
+  and — verified against a real Postgres role via `SET ROLE`, not merely
+  inferred from the `REVOKE` running without error — that append-only
+  enforcement genuinely blocks `UPDATE`/`DELETE` while still allowing
+  `INSERT`. Full component spec:
+  [packages/platform/docs/outbox-schema.md](packages/platform/docs/outbox-schema.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
