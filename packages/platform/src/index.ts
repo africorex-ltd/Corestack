@@ -13,3 +13,12 @@ export { loadMigrationSet } from "./application/load-migration-set.js";
 
 export type { FsMigrationSourceOptions } from "./infrastructure/fs-migration-source.js";
 export { FsMigrationSource } from "./infrastructure/fs-migration-source.js";
+
+export type {
+  ModuleHealthStatus,
+  ModuleHealth,
+  ModuleInstance,
+  ModuleFactory,
+  ModuleConformanceIssue,
+} from "./application/module-lifecycle.js";
+export { checkModuleConformance, assertModuleConformance } from "./application/module-lifecycle.js";

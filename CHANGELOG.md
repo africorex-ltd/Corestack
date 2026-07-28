@@ -36,7 +36,22 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   filesystem, no Postgres yet). Full component spec:
   [packages/platform/docs/migration-loader.md](packages/platform/docs/migration-loader.md).
 
-- **Audit remediation + Continuous Quality Governance:** all four P0 findings
+- **ADR-0016 platform as second shared dependency base:** fixed a latent gap
+  between Architecture §47's "modules depend only on kernel" diagram and
+  blueprint E03's own designation of `@corestack/platform` as home for the
+  composition root, migrations, and outbox — every module needs it too.
+  Diagram, prose, and the cross-package fitness rule updated together so
+  the enforced rule and the documented rule can never diverge again.
+
+- **E03-T20 module lifecycle contract:** `ModuleFactory<TDeps, TConfig, TUseCases>`
+  and `ModuleInstance` types (ADR-0014) plus a runtime `checkModuleConformance`/
+  `assertModuleConformance` safety net — necessary because a third-party
+  module is never compiled against these types at all, so the composition
+  root (T21) verifies structurally at boot with every issue aggregated, not
+  just the first. Proven against a real factory built from actual kernel
+  ports, not just a synthetic fixture. 10 new tests (49 total in platform).
+
+- **E03-T01 migration format & loader:** new `@corestack/platform` package
   fixed with regression tests (CI silent-success guards; `idempotentHandler`
   now genuinely at-least-once; `InMemoryUnitOfWork` isolates consumer
   failures per ADR-0009; workflows SHA-pinned and release gated); P1 batch

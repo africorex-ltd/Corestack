@@ -1,9 +1,11 @@
 # @corestack/platform
 
 > **Status: In progress** — the `platform` schema machinery every module
-> depends on (Architecture §45; [decision 0001](../../docs/decisions/0001-platform-package.md)).
+> depends on (Architecture §45, §47; ADR-0016;
+> [decision 0001](../../docs/decisions/0001-platform-package.md)).
 > Grows task-by-task per [blueprint E03](../../docs/engineering/01-foundation.md);
-> only the migration loader (E03-T01) exists so far.
+> the migration loader (E03-T01) and module lifecycle contract (E03-T20)
+> exist so far.
 
 ## What this package is
 
@@ -39,9 +41,10 @@ performance budget, security considerations, and observability scoping
 | Capability                                      | Status         | Entry point                                                                                                    |
 | ----------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
 | Migration format & loader                       | ✅ E03-T01     | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md) |
+| Module lifecycle contract                       | ✅ E03-T20     | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)   |
 | Migration runner (`platform.module_migrations`) | 📋 E03-T02     | —                                                                                                              |
 | Transactional outbox (writer + relay)           | 📋 E03-T10–T14 | —                                                                                                              |
-| Composition root (`createCoreStack()`)          | 📋 E03-T20–T24 | —                                                                                                              |
+| `createCoreStack()` composition helper          | 📋 E03-T21–T24 | —                                                                                                              |
 | RLS / tenant-isolation harness                  | 📋 E03-T30–T33 | —                                                                                                              |
 | Shared Postgres adapter base                    | 📋 E03-T40–T43 | —                                                                                                              |
 
@@ -74,10 +77,47 @@ Migration file format (`migrations/tenancy/0001_create-organizations.sql`):
 CREATE TABLE tenancy.organizations (id uuid PRIMARY KEY);
 ```
 
+## Example usage (module lifecycle contract)
+
+Every module — including future first-party ones — exports a factory
+matching `ModuleFactory<TDeps, TConfig, TUseCases>`:
+
+```ts
+import type { Clock, IdGenerator } from "@corestack/kernel";
+import type { ModuleFactory } from "@corestack/platform";
+
+interface WidgetsDeps {
+  readonly clock: Clock;
+  readonly ids: IdGenerator;
+}
+interface WidgetsConfig {
+  readonly defaultColor: string;
+}
+interface WidgetsUseCases {
+  createWidget(): { id: string; createdAt: Date };
+}
+
+export const createWidgetsModule: ModuleFactory<WidgetsDeps, WidgetsConfig, WidgetsUseCases> = (
+  deps,
+  _config,
+) => ({
+  useCases: {
+    createWidget: () => ({ id: deps.ids.generate(), createdAt: deps.clock.now() }),
+  },
+  eventHandlers: [],
+  health: () => ({ status: "healthy" }),
+});
+```
+
+The composition root (E03-T21) will call `checkModuleConformance`/
+`assertModuleConformance` on every module it wires — including third-party
+ones it never compiled against these types — so a malformed module fails
+loudly at boot with every problem listed at once.
+
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test        # 39 tests, no Docker required
+pnpm --filter @corestack/platform test        # 49 tests, no Docker required
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -126,7 +166,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 39 tests, 3 layers, zero Docker dependency for what exists so far                                   |
+| Testability     | High — 49 tests across 4 capabilities, zero Docker dependency for what exists so far                       |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |
