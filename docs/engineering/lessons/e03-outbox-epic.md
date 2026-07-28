@@ -57,6 +57,19 @@ for this checkpoint's fuller status snapshot.
   later assertion's expected count. Lesson: a test's `beforeEach` must
   reset every table the test touches, not just the ones the module under
   test owns.
+- **A benchmark's own test fixture can have the exact off-by-one bugs it
+  exists to catch elsewhere.** `relay-dispatch.bench.ts`'s in-memory
+  `OutboxRelayStore` fake computed its next-fetch index as
+  `findIndex(...) + 1`, which is correct when the cursor isn't the last
+  element and silently wrong (wraps to `0`) when it is — which happened
+  on every single round of this specific benchmark, causing
+  `OutboxRelay` to loop forever redelivering the same batch. It hung
+  silently (no error, no timeout, just climbing CPU) until traced with
+  explicit step-by-step `console.error` calls. Lesson: a hang with zero
+  output is a collection-phase or infinite-loop signal, not "just slow" —
+  isolate to the smallest reproducing file before assuming the runner or
+  environment is at fault, and don't trust a benchmark's own scaffolding
+  any less rigorously than production code just because it never ships.
 
 ## Surprises
 
@@ -76,6 +89,18 @@ for this checkpoint's fuller status snapshot.
   script picks up requires a dedicated config file
   (`vitest.bench.config.ts`), not a CLI override. Found only by trying
   the flag and reading the CAC error, not documentation.
+- Docker Desktop went from "working" to "binary and service both gone,
+  install directory left in a `tmp-delete` state" within the same
+  session, immediately after a `docker desktop restart` command — without
+  clear proof of causation either way. Rather than keep retrying a
+  system-level repair, the practical answer was a completely different
+  path: a locally installed PostgreSQL 18 instance plus a dual-mode test
+  bootstrap (local database vs. Testcontainers), which turned out to be
+  strictly better for local development speed (the full integration
+  suite dropped from requiring `--no-file-parallelism` sequential runs to
+  a ~12-second parallel run). Lesson: when infrastructure keeps breaking
+  in a way that resists diagnosis, changing the dependency itself can be
+  faster and more valuable than continuing to repair it.
 
 ## Future improvements
 

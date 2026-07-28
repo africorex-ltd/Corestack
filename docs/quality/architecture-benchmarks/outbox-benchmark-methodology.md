@@ -20,14 +20,14 @@ whole repo. Until then, this is a local, manually-run tool.
 
 ## What is benchmarked
 
-| Script                             | Measures                                                                                                                                           | Backing                        |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `write-outbox-events.bench.ts`     | `writeOutboxEvents(sql, events)` inserting a 10-event batch                                                                                        | Real Postgres (Testcontainers) |
-| `relay-polling.bench.ts`           | One full `OutboxRelay.pollOnce()` round (checkpoint read, fetch, no-op dispatch, checkpoint advance) against a fresh 10-event batch each iteration | Real Postgres (Testcontainers) |
-| `relay-dispatch.bench.ts`          | The relay's own dispatch-loop overhead in isolation, backed by an in-memory fake store — separates relay logic cost from Postgres I/O cost         | In-memory (no Testcontainers)  |
-| `checkpoint-updates.bench.ts`      | `PostgresOutboxRelayStore.advanceCheckpoint`                                                                                                       | Real Postgres (Testcontainers) |
-| `processed-event-inserts.bench.ts` | `PostgresProcessedEventStore.markProcessed` (fresh event id each call, never the `ON CONFLICT` path)                                               | Real Postgres (Testcontainers) |
-| `partition-maintenance.bench.ts`   | `maintainOutboxPartitions`'s steady-state create-ahead path (partitions already exist, call is a `pg_inherits` read plus idempotent no-op DDL)     | Real Postgres (Testcontainers) |
+| Script                             | Measures                                                                                                                                           | Backing                                                       |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `write-outbox-events.bench.ts`     | `writeOutboxEvents(sql, events)` inserting a 10-event batch                                                                                        | Real Postgres (dual-mode bootstrap — local or Testcontainers) |
+| `relay-polling.bench.ts`           | One full `OutboxRelay.pollOnce()` round (checkpoint read, fetch, no-op dispatch, checkpoint advance) against a fresh 10-event batch each iteration | Real Postgres (dual-mode bootstrap — local or Testcontainers) |
+| `relay-dispatch.bench.ts`          | The relay's own dispatch-loop overhead in isolation, backed by an in-memory fake store — separates relay logic cost from Postgres I/O cost         | In-memory (no Testcontainers)                                 |
+| `checkpoint-updates.bench.ts`      | `PostgresOutboxRelayStore.advanceCheckpoint`                                                                                                       | Real Postgres (dual-mode bootstrap — local or Testcontainers) |
+| `processed-event-inserts.bench.ts` | `PostgresProcessedEventStore.markProcessed` (fresh event id each call, never the `ON CONFLICT` path)                                               | Real Postgres (dual-mode bootstrap — local or Testcontainers) |
+| `partition-maintenance.bench.ts`   | `maintainOutboxPartitions`'s steady-state create-ahead path (partitions already exist, call is a `pg_inherits` read plus idempotent no-op DDL)     | Real Postgres (dual-mode bootstrap — local or Testcontainers) |
 
 `relay-polling` and `relay-dispatch` deliberately measure different
 things: `relay-polling` is what a deployment actually experiences (full
@@ -47,8 +47,11 @@ match a real deployment's partition-count profile.
 
 Each benchmark:
 
-1. Boots a fresh `postgres:16-alpine` Testcontainer (except
-   `relay-dispatch`, which needs no database).
+1. Boots a fresh, isolated Postgres target via the dual-mode
+   `createTestDatabase()` bootstrap — a scratch database on a local
+   instance if `DATABASE_URL` is set, otherwise a fresh
+   `postgres:16-alpine` Testcontainer (except `relay-dispatch`, which
+   needs no database).
 2. Bootstraps the outbox schema fresh per benchmark file
    (`ensureOutboxSchema`).
 3. Runs 5 (200 for `relay-dispatch`, which is cheap and in-memory) untimed
@@ -83,13 +86,13 @@ something this scaffolding commits to today.
   [remediation log](../remediation-log.md)). Keeping `bench` outside both
   `turbo.json` and the CI workflow means there is no lane that could
   silently stop running it.
-- **No file-parallelism:** all five Postgres-backed benchmarks run via
-  `--no-file-parallelism` in the `bench` npm script, for the same reason
-  the `test:integration` script does — this machine's local Testcontainers
-  setup has a real memory ceiling (documented in project memory), and
-  running multiple Postgres containers concurrently causes intermittent
-  Docker API failures. This is a local-sandbox accommodation, not a
-  statement about CI capacity.
+- **No file-parallelism:** the `bench` npm script runs with
+  `--no-file-parallelism`. In local mode (a shared Postgres instance, one
+  throwaway database per file) this is no longer strictly required for
+  correctness — each file's scratch database is isolated — but it keeps
+  the same conservative posture as `test:integration`'s Testcontainers
+  fallback, where this machine's Docker memory ceiling made concurrent
+  containers unreliable (documented in project memory).
 
 ## How to run
 
@@ -97,31 +100,51 @@ something this scaffolding commits to today.
 pnpm --filter @corestack/platform bench
 ```
 
-Requires a working Docker daemon (same requirement as
-`test:integration`). Each of the five Postgres-backed scripts starts and
-tears down its own container sequentially; expect this to take noticeably
-longer than the test suites.
+Requires either a reachable local Postgres via `DATABASE_URL` (see
+[postgres-18-compatibility.md](../../platform/postgres-18-compatibility.md))
+or a working Docker daemon for the Testcontainers fallback — see the
+package README's Testing guide for the dual-mode bootstrap.
 
 ## Baseline provenance
 
-**No baseline has been captured yet.** The six scripts above are verified
-to typecheck (`tsc --noEmit`, `bench` added to `tsconfig.json`'s
-`include`) and lint clean, but have never actually executed end-to-end:
-this local development machine's Docker Desktop installation became
-unavailable (installation directory left in a `tmp-delete` state, no
-`docker` binary, no Docker service running) while the first run was
-in progress, and the run had to be abandoned rather than reported as
-successful. `docs/quality/architecture-benchmarks/baselines/outbox/`
-does not exist yet — it is created on first successful run, per
-`bench/harness.ts`'s `writeBaseline`.
+**Captured 2026-07-28** on this local development machine, against a
+local PostgreSQL 18.4 instance via `DATABASE_URL` (the same instance the
+compatibility verification used) — not CI hardware, not representative of
+production performance. All six benchmarks ran cleanly with the isolated
+scratch-database bootstrap; no orphaned databases remained afterward. See
+[baselines/outbox/](baselines/outbox/) for the raw JSON.
 
-**Once Docker Desktop is restored on this machine**, run:
+| Benchmark                            | Mean   | p50    | p95    |
+| ------------------------------------ | ------ | ------ | ------ |
+| `write-outbox-events-batch-10`       | 4.24ms | 3.39ms | 7.68ms |
+| `relay-poll-once-batch-10`           | 4.80ms | 3.80ms | 8.43ms |
+| `relay-dispatch-batch-10-in-memory`  | 0.95ms | 0.29ms | 3.12ms |
+| `checkpoint-advance`                 | 1.66ms | 1.11ms | 5.34ms |
+| `processed-event-mark`               | 1.39ms | 1.12ms | 3.08ms |
+| `partition-maintenance-steady-state` | 3.56ms | 2.72ms | 8.45ms |
 
-```bash
-pnpm --filter @corestack/platform bench
-```
+The gap between `relay-poll-once-batch-10` (real Postgres, ~4.8ms mean)
+and `relay-dispatch-batch-10-in-memory` (~0.95ms mean) is almost entirely
+Postgres round-trip cost, not relay-loop overhead — consistent with the
+methodology's stated reason for keeping these as two separate benchmarks.
 
-and this section should be updated with the actual date, machine, and a
-link to the generated baseline files — not before. A meaningful
-cross-environment baseline (CI runners, representative production
-hardware) is exactly what E04-T13 should establish regardless.
+**This first run also caught a real bug**, worth recording here since it
+is the kind of thing a baseline run is supposed to catch: the first
+attempt to run `relay-dispatch.bench.ts` hung indefinitely. Its in-memory
+`OutboxRelayStore` fake computed the next fetch position as
+`events.findIndex(e => e.occurredAt > after.occurredAt) + 1` — correct
+when the cursor isn't at the last element, but when it _is_ (which is
+every round in this benchmark), `findIndex` returns `-1`, and `-1 + 1`
+silently wrapped back to index `0` instead of "past the end." `OutboxRelay`
+kept receiving the same full batch back forever, matching its "batch was
+full, more may be waiting" continuation condition on every round. Fixed
+by finding the cursor's own event and starting after it, defaulting to
+"nothing left" when not found rather than to `0`. This bug was entirely
+confined to the benchmark's own test fixture — no production code was
+affected — but it is exactly the kind of off-by-one a real execution
+catches that a typecheck/lint pass cannot.
+
+A meaningful cross-environment baseline (CI runners, representative
+production hardware) is exactly what E04-T13 should establish; this one
+exists to prove the scaffolding works and to give a future optimization
+pass a same-machine number to compare against.

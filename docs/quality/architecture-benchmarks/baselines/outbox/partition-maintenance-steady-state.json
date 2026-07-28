@@ -1,0 +1,10 @@
+{
+  "name": "partition-maintenance-steady-state",
+  "iterations": 50,
+  "meanMs": 3.561015999999945,
+  "p50Ms": 2.72190000000046,
+  "p95Ms": 8.453199999999924,
+  "minMs": 2.0680000000011205,
+  "maxMs": 8.800900000000183,
+  "recordedAt": "2026-07-28T20:46:00.433Z"
+}

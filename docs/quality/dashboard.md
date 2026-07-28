@@ -59,13 +59,13 @@ for the first instance of this standard.
 Kernel hot paths: none yet — harness arrives E04-T13; hot-path budgets
 (≤5 ms session/policy p95) become CI-gated then.
 
-**Outbox subsystem:** first real, runnable baseline exists as of the
-Infrastructure Consolidation pass — six scripts under
-`packages/platform/bench/` (`writeOutboxEvents`, relay polling, relay
-dispatch, checkpoint updates, processed-event inserts, partition
-maintenance), all measured against real Postgres (Testcontainers) except
-the in-memory relay-dispatch isolation script. **Not CI-gated, no
-thresholds** — same posture as the kernel, deferred to E04-T13. See
+**Outbox subsystem:** first real baseline captured 2026-07-28 against a
+local PostgreSQL 18.4 instance — six scripts under
+`packages/platform/bench/` (`writeOutboxEvents` 4.24ms mean, relay
+polling 4.80ms, relay dispatch 0.95ms in-memory, checkpoint updates
+1.66ms, processed-event inserts 1.39ms, partition maintenance 3.56ms).
+**Not CI-gated, no thresholds** — same posture as the kernel, deferred to
+E04-T13. See
 [outbox-benchmark-methodology.md](architecture-benchmarks/outbox-benchmark-methodology.md)
 and [baselines/outbox/](architecture-benchmarks/baselines/outbox/).
 
@@ -86,17 +86,22 @@ subsystem consolidated (2026-07-28): end-to-end architecture map with
 sequence diagram, operational runbook, security review, observability
 contract, and health/readiness contract — see
 [E03-outbox-milestone-report.md](../engineering/reviews/E03-outbox-milestone-report.md)
-for the full index. One stale cross-reference caught and fixed in the
-same pass (E03-entry-review.md's runbook path).
+for the full index. Two stale cross-references caught and fixed in the
+same pass (E03-entry-review.md's runbook path; several component specs'
+Testcontainers-only test framing, once local Postgres 18 became a second
+mode). PostgreSQL 18 compatibility verified empirically — see
+[postgres-18-compatibility.md](../platform/postgres-18-compatibility.md).
 
 ## Infrastructure maturity
 
-**78/100** as of the outbox-epic Infrastructure Consolidation pass
-(2026-07-28) — scored per-dimension (contract completeness, test rigor,
-operational readiness, security posture, performance visibility,
-documentation coherence) in
+**83/100** as of the outbox-epic Infrastructure Consolidation pass
+(2026-07-28, revised after a real benchmark baseline was captured) —
+scored per-dimension (contract completeness, test rigor, operational
+readiness, security posture, performance visibility, documentation
+coherence) in
 [E03-outbox-milestone-report.md §6](../engineering/reviews/E03-outbox-milestone-report.md).
 Scope: the outbox subsystem only, not all of E03 or the whole platform
-package. Held back mainly by performance visibility (first baseline just
-established, unthresholded) and operational tooling maturity (runbook
-procedures like replay are manual SQL, not yet a built API).
+package. Held back mainly by operational tooling maturity (runbook
+procedures like replay are manual SQL, not yet a built API) and
+performance visibility (real baseline now exists, but single-machine and
+unthresholded).
