@@ -332,6 +332,30 @@ LOCAL` syntax outright. Along the way, verified a genuinely surprising
   table-owning superuser's RLS-bypass exemption. Full component spec:
   [packages/platform/docs/tenant-isolation.md](packages/platform/docs/tenant-isolation.md).
 
+- **E03-T31 org-scoped repository base:** `OrgScopedContext` narrows the
+  kernel's `Context` (whose `organizationId` is legitimately `string | null`
+  for platform-scoped operations) down to a variant where it's a plain
+  `string` — `requireOrgScoped` is the one runtime check that performs the
+  narrowing; every helper downstream, starting with `runOrgScopedQuery`,
+  requires the narrowed type instead of `Context` directly. The blueprint's
+  acceptance criterion is explicit that this must be a **compile-time**
+  guarantee, not a repeated runtime check — verified directly by
+  temporarily deleting the type-enforcement test's `@ts-expect-error` and
+  confirming `tsc` reports the exact expected error (`string | null` not
+  assignable to `string`) before restoring it. A real fixture repository
+  (`FixtureWidgetRepository`) built on these helpers is proven against
+  Postgres over a **directly authenticated** app-role connection (a
+  temporary login password scoped to the disposable test database, not
+  `SET ROLE` from a superuser) — closing the one gap E03-T30's own harness
+  documented as unverified. Along the way, found that postgres.js's
+  `ReservedSql` type claims `.begin()` (`extends Sql`) but the method is
+  `undefined` at runtime in the installed version — avoided rather than
+  worked around, since the directly-authenticated-connection design was
+  simpler and gave stronger evidence anyway. 5 new unit/type tests + 2 new
+  integration tests (platform now at 184 unit + 57 integration). Full
+  component spec:
+  [packages/platform/docs/org-scoped-repository.md](packages/platform/docs/org-scoped-repository.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

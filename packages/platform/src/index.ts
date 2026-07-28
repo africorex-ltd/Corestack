@@ -114,3 +114,6 @@ export { checkLiveness, checkReadiness, RelayLagRecorder } from "./application/h
 
 export type { TenantPolicyTarget } from "./domain/tenant-policy.js";
 export { buildTenantIsolationDdl } from "./domain/tenant-policy.js";
+
+export type { OrgScopedContext } from "./application/org-scoped-context.js";
+export { requireOrgScoped } from "./application/org-scoped-context.js";

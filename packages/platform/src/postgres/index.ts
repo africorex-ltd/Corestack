@@ -40,3 +40,5 @@ export type { TenancyRoleNames } from "../infrastructure/postgres-tenancy-roles.
 export { ensureTenancyRoles } from "../infrastructure/postgres-tenancy-roles.js";
 
 export { withOrgContext } from "../infrastructure/postgres-org-context.js";
+
+export { runOrgScopedQuery } from "../infrastructure/postgres-org-scoped-repository.js";
