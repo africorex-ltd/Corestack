@@ -43,7 +43,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@corestack/kernel": "workspace:*"
+    "@corestack/kernel": "workspace:*",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@corestack/tsconfig": "workspace:*",

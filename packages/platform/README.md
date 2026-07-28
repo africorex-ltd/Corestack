@@ -4,8 +4,8 @@
 > depends on (Architecture §45, §47; ADR-0016;
 > [decision 0001](../../docs/decisions/0001-platform-package.md)).
 > Grows task-by-task per [blueprint E03](../../docs/engineering/01-foundation.md);
-> the migration loader (E03-T01) and module lifecycle contract (E03-T20)
-> exist so far.
+> the migration loader (E03-T01), module lifecycle contract (E03-T20), and
+> config validation framework (E03-T22) exist so far.
 
 ## What this package is
 
@@ -42,6 +42,7 @@ performance budget, security considerations, and observability scoping
 | ----------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
 | Migration format & loader                       | ✅ E03-T01     | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md) |
 | Module lifecycle contract                       | ✅ E03-T20     | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)   |
+| Config validation framework                     | ✅ E03-T22     | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md) |
 | Migration runner (`platform.module_migrations`) | 📋 E03-T02     | —                                                                                                              |
 | Transactional outbox (writer + relay)           | 📋 E03-T10–T14 | —                                                                                                              |
 | `createCoreStack()` composition helper          | 📋 E03-T21–T24 | —                                                                                                              |
@@ -114,10 +115,34 @@ The composition root (E03-T21) will call `checkModuleConformance`/
 ones it never compiled against these types — so a malformed module fails
 loudly at boot with every problem listed at once.
 
+## Example usage (config validation)
+
+```ts
+import { z } from "zod";
+import { loadAllModuleConfigs, ProcessEnvSource, type ModuleConfigSpec } from "@corestack/platform";
+
+const authConfig: ModuleConfigSpec<{ port: number; sessionSecret: string }> = {
+  moduleName: "auth",
+  schema: z.object({ port: z.coerce.number().int().positive(), sessionSecret: z.string().min(16) }),
+  envMapping: {
+    port: "AUTH_PORT",
+    sessionSecret: { envKey: "AUTH_SESSION_SECRET", secret: true }, // may be "ref:..."
+  },
+};
+
+const result = await loadAllModuleConfigs({ specs: [authConfig], env: new ProcessEnvSource() });
+if (!result.ok) {
+  // result.error.metadata.issues lists every problem, across every module —
+  // never a value, secret or not.
+  console.error(result.error.message, result.error.metadata.issues);
+  process.exit(1);
+}
+```
+
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test        # 49 tests, no Docker required
+pnpm --filter @corestack/platform test        # 65 tests, no Docker required
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -125,7 +150,11 @@ Testing a consumer of these ports? Use the fakes under the `/testing`
 subpath rather than mocking:
 
 ```ts
-import { InMemoryMigrationSource } from "@corestack/platform/testing";
+import {
+  InMemoryMigrationSource,
+  InMemoryEnvSource,
+  InMemorySecretResolver,
+} from "@corestack/platform/testing";
 ```
 
 Future Postgres-backed capabilities (T02, T10+) will need Docker
@@ -144,6 +173,10 @@ Future Postgres-backed capabilities (T02, T10+) will need Docker
 - **The checksum covers the whole file, header included.** Editing only
   the `@lock-impact` line still changes the checksum — this is intentional
   so drift detection (T02) catches header edits too.
+- **`ref:` secret-reference syntax only applies to fields marked `secret: true`.**
+  A non-secret field whose literal value happens to start with `ref:` is
+  used as-is, not resolved — special-casing every `ref:`-prefixed string
+  platform-wide would be surprising action-at-a-distance.
 
 ## Extension points
 
@@ -166,7 +199,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 49 tests across 4 capabilities, zero Docker dependency for what exists so far                       |
+| Testability     | High — 65 tests across 5 capabilities, zero Docker dependency for what exists so far                       |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

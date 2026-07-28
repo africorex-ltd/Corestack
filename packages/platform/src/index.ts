@@ -22,3 +22,18 @@ export type {
   ModuleConformanceIssue,
 } from "./application/module-lifecycle.js";
 export { checkModuleConformance, assertModuleConformance } from "./application/module-lifecycle.js";
+
+export { SECRET_REF_PREFIX, isSecretRefValue, stripSecretRefPrefix } from "./domain/secret-ref.js";
+
+export type {
+  EnvSource,
+  SecretResolver,
+  ModuleConfigFieldMapping,
+  ModuleConfigEnvMapping,
+  ModuleConfigSpec,
+  ConfigValidationIssue,
+  LoadAllModuleConfigsInput,
+} from "./application/config-validation.js";
+export { loadModuleConfig, loadAllModuleConfigs } from "./application/config-validation.js";
+
+export { ProcessEnvSource } from "./infrastructure/process-env-source.js";

@@ -55,6 +55,9 @@ importers:
       "@corestack/kernel":
         specifier: workspace:*
         version: link:../kernel
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
     devDependencies:
       "@corestack/tsconfig":
         specifier: workspace:*
@@ -2625,6 +2628,12 @@ packages:
       }
     engines: { node: ">=10" }
 
+  zod@3.25.76:
+    resolution:
+      {
+        integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==,
+      }
+
 snapshots:
   "@ampproject/remapping@2.3.0":
     dependencies:
@@ -4107,3 +4116,5 @@ snapshots:
       strip-ansi: 7.2.0
 
   yocto-queue@0.1.0: {}
+
+  zod@3.25.76: {}

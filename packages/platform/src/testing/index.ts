@@ -5,3 +5,5 @@
  */
 
 export { InMemoryMigrationSource } from "./in-memory-migration-source.js";
+export { InMemoryEnvSource } from "./in-memory-env-source.js";
+export { InMemorySecretResolver } from "./in-memory-secret-resolver.js";

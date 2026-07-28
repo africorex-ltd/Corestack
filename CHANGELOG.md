@@ -43,6 +43,29 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   Diagram, prose, and the cross-package fitness rule updated together so
   the enforced rule and the documented rule can never diverge again.
 
+- **E03-T22 config validation framework:** per-module Zod schemas mapped
+  from environment variables (`zod` is platform's first non-kernel runtime
+  dependency, ADR-0005), with an optional `ref:...` secret-indirection
+  syntax resolved via a pluggable `SecretResolver` port. Every problem
+  across every module is aggregated into one report — never fail-fast on
+  the first broken field or module. **No config value ever appears in an
+  error, secret or not** — including a real gap caught while writing the
+  tests: Zod's own messages can embed the received value for some rule
+  types (enum/literal mismatches), which would have leaked a secret
+  through a code path this framework doesn't directly control; fixed by
+  redacting the message whenever the failing field is marked `secret`.
+  A second real bug (duplicate, confusing issues when a secret's
+  resolution fails) was also caught by its own regression test and fixed
+  before shipping. A third, tooling-level finding: the repo-wide
+  `no-restricted-globals: process` lint rule correctly banned `process` in
+  the new `ProcessEnvSource` adapter too — that adapter's entire job is
+  bridging `process.env` into this framework, so a narrowly-scoped
+  exemption (matched to `*env-source.ts` filenames only, not the whole
+  infrastructure layer) was added with its own fixture tests proving the
+  scope is exact. 16 new tests (65 total in platform; +2 lint fixtures).
+  Full component
+  spec: [packages/platform/docs/config-validation.md](packages/platform/docs/config-validation.md).
+
 - **E03-T20 module lifecycle contract:** `ModuleFactory<TDeps, TConfig, TUseCases>`
   and `ModuleInstance` types (ADR-0014) plus a runtime `checkModuleConformance`/
   `assertModuleConformance` safety net — necessary because a third-party
@@ -51,7 +74,7 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   just the first. Proven against a real factory built from actual kernel
   ports, not just a synthetic fixture. 10 new tests (49 total in platform).
 
-- **E03-T01 migration format & loader:** new `@corestack/platform` package
+- **Audit remediation + Continuous Quality Governance:** all four P0 findings
   fixed with regression tests (CI silent-success guards; `idempotentHandler`
   now genuinely at-least-once; `InMemoryUnitOfWork` isolates consumer
   failures per ADR-0009; workflows SHA-pinned and release gated); P1 batch
