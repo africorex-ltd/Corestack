@@ -27,6 +27,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./postgres": {
+      "types": "./dist/postgres/index.d.ts",
+      "import": "./dist/postgres/index.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
@@ -38,17 +42,29 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --exclude \"**/test/integration/**\"",
+    "test:watch": "vitest --exclude \"**/test/integration/**\"",
+    "test:integration": "vitest run test/integration --testTimeout 60000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@corestack/kernel": "workspace:*",
     "zod": "^3.25.0"
   },
+  "peerDependencies": {
+    "postgres": "^3.4.5"
+  },
+  "peerDependenciesMeta": {
+    "postgres": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@corestack/tsconfig": "workspace:*",
+    "@testcontainers/postgresql": "^10.13.2",
     "@types/node": "^20.19.9",
+    "postgres": "^3.4.5",
+    "testcontainers": "^10.13.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   }

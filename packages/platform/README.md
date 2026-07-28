@@ -6,8 +6,8 @@
 > Grows task-by-task per [blueprint E03](../../docs/engineering/01-foundation.md);
 > the migration loader (E03-T01), module lifecycle contract (E03-T20),
 > config validation framework (E03-T22), `createCoreStack()` (E03-T21),
-> graceful shutdown orchestration (E03-T24), and context resolution
-> (E03-T32) exist so far.
+> graceful shutdown orchestration (E03-T24), context resolution (E03-T32),
+> and the `platform.module_migrations` runner (E03-T02) exist so far.
 
 ## What this package is
 
@@ -28,9 +28,15 @@ isn't a bounded-context module:
 src/
   domain/          pure logic — parsing, validation, identity (no I/O, no Node builtins)
   application/      ports + orchestration (no infrastructure, no Node builtins)
-  infrastructure/  adapters — filesystem, and later Postgres (Node/vendor APIs allowed)
+  infrastructure/  adapters — filesystem, Postgres (Node/vendor APIs allowed)
+  postgres/        barrel re-exporting Postgres adapters, published as "./postgres"
   testing/         in-memory fakes, exported via the "./testing" subpath
 ```
+
+`postgres` (the driver) is an **optional peer dependency** (ADR-0010) —
+only importing from `@corestack/platform/postgres` pulls it in; the main
+`.` entry point stays dependency-light for adopters using only the pure/
+in-memory parts.
 
 Each capability gets a **component spec** under `docs/` — contract, failure
 modes, retry/timeout/cancellation posture, concurrency guarantees,
@@ -40,19 +46,19 @@ performance budget, security considerations, and observability scoping
 
 ## Public API guide
 
-| Capability                                      | Status              | Entry point                                                                                                    |
-| ----------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Migration format & loader                       | ✅ E03-T01          | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md) |
-| Module lifecycle contract                       | ✅ E03-T20          | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)   |
-| Config validation framework                     | ✅ E03-T22          | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md) |
-| `createCoreStack()` composition helper          | ✅ E03-T21          | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                               |
-| Graceful shutdown orchestration                 | ✅ E03-T24          | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                            |
-| Context resolution (ADR-0008 layer 2)           | ✅ E03-T32          | `resolveContext`, `MembershipLookup` — see [component spec](docs/resolve-context.md)                           |
-| Migration runner (`platform.module_migrations`) | 📋 E03-T02          | —                                                                                                              |
-| Transactional outbox (writer + relay)           | 📋 E03-T10–T14      | —                                                                                                              |
-| Health/readiness framework                      | 📋 E03-T23          | (needs the outbox relay, T12, to test readiness-flip against)                                                  |
-| RLS / tenant-isolation harness                  | 📋 E03-T30–T31, T33 | —                                                                                                              |
-| Shared Postgres adapter base                    | 📋 E03-T40–T43      | —                                                                                                              |
+| Capability                                      | Status              | Entry point                                                                                                     |
+| ----------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Migration format & loader                       | ✅ E03-T01          | `parseMigrationFile`, `loadMigrationSet`, `FsMigrationSource` — see [component spec](docs/migration-loader.md)  |
+| Module lifecycle contract                       | ✅ E03-T20          | `ModuleFactory`, `ModuleInstance`, `checkModuleConformance` — see [component spec](docs/module-lifecycle.md)    |
+| Config validation framework                     | ✅ E03-T22          | `loadAllModuleConfigs`, `loadModuleConfig`, `SecretResolver` — see [component spec](docs/config-validation.md)  |
+| `createCoreStack()` composition helper          | ✅ E03-T21          | `createCoreStack`, `CoreStack` — see [component spec](docs/create-core-stack.md)                                |
+| Graceful shutdown orchestration                 | ✅ E03-T24          | `shutdownGracefully`, `Drainable` — see [component spec](docs/graceful-shutdown.md)                             |
+| Context resolution (ADR-0008 layer 2)           | ✅ E03-T32          | `resolveContext`, `MembershipLookup` — see [component spec](docs/resolve-context.md)                            |
+| Migration runner (`platform.module_migrations`) | ✅ E03-T02          | `runMigrations`, `PostgresMigrationRunnerStore` (`./postgres`) — see [component spec](docs/migration-runner.md) |
+| Transactional outbox (writer + relay)           | 📋 E03-T10–T14      | —                                                                                                               |
+| Health/readiness framework                      | 📋 E03-T23          | (needs the outbox relay, T12, to test readiness-flip against)                                                   |
+| RLS / tenant-isolation harness                  | 📋 E03-T30–T31, T33 | —                                                                                                               |
+| Shared Postgres adapter base                    | 📋 E03-T40–T43      | —                                                                                                               |
 
 ## Example usage (migration loader)
 
@@ -222,10 +228,41 @@ if (!isOk(result)) {
 const context = result.value; // trustworthy from here on
 ```
 
+## Example usage (migration runner)
+
+```ts
+import postgres from "postgres";
+import {
+  ensureMigrationTrackingSchema,
+  PostgresMigrationRunnerStore,
+} from "@corestack/platform/postgres";
+import { FsMigrationSource, loadMigrationSet, runMigrations } from "@corestack/platform";
+import { isOk } from "@corestack/kernel";
+
+// Pool must allow >= 2 connections: one holds the advisory lock, one runs
+// the migration transactions.
+const sql = postgres(process.env.DATABASE_URL!, { max: 5 });
+await ensureMigrationTrackingSchema(sql);
+
+const store = new PostgresMigrationRunnerStore(sql);
+const source = new FsMigrationSource({ baseDir: "./migrations" });
+
+for (const moduleName of ["tenancy", "auth"]) {
+  const migrationSet = await loadMigrationSet(moduleName, source);
+  if (!isOk(migrationSet)) throw migrationSet.error;
+  const result = await runMigrations(migrationSet.value, store);
+  if (!isOk(result)) throw result.error; // drifted history — stop, don't guess
+  console.log(
+    `${moduleName}: applied versions ${result.value.appliedVersions.join(", ") || "(none — up to date)"}`,
+  );
+}
+```
+
 ## Testing guide
 
 ```bash
-pnpm --filter @corestack/platform test        # 93 tests, no Docker required
+pnpm --filter @corestack/platform test                # 107 tests, no Docker required
+pnpm --filter @corestack/platform test:integration     # +7 tests, real Postgres via Testcontainers
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -237,12 +274,16 @@ import {
   InMemoryMigrationSource,
   InMemoryEnvSource,
   InMemorySecretResolver,
+  InMemoryMembershipLookup,
+  InMemoryMigrationRunnerStore,
 } from "@corestack/platform/testing";
 ```
 
-Future Postgres-backed capabilities (T02, T10+) will need Docker
-(Testcontainers) and are wired into the `test:integration` lane, not `test`
-— see [tooling/ci/integration-manifest.json](../../tooling/ci/integration-manifest.json).
+Postgres-backed capabilities (T02 now; T10+ later) need Docker
+(Testcontainers) and are wired into the `test:integration` lane, not
+`test` — see [tooling/ci/integration-manifest.json](../../tooling/ci/integration-manifest.json),
+which every such capability must be added to (and CI enforces the match
+exactly).
 
 ## Common pitfalls
 
@@ -260,6 +301,13 @@ Future Postgres-backed capabilities (T02, T10+) will need Docker
   A non-secret field whose literal value happens to start with `ref:` is
   used as-is, not resolved — special-casing every `ref:`-prefixed string
   platform-wide would be surprising action-at-a-distance.
+- **The migration-lock connection pool needs `max >= 2`.** One connection
+  holds the advisory lock for the whole per-module run; a pool of size 1
+  deadlocks (the migration transactions have nowhere to run).
+- **`platform.module_migrations` stores one row per module, not one per
+  migration file.** Drift detection works via a cumulative chain checksum
+  over the whole applied history (see the migration-runner component spec)
+  — this is a property of the checksum, not something you need to manage.
 
 ## Extension points
 
@@ -282,7 +330,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 93 tests across 8 capabilities, zero Docker dependency for what exists so far                       |
+| Testability     | High — 107 unit tests (no Docker) + 7 real-Postgres integration tests across 9 capabilities                |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

@@ -1,4 +1,4 @@
 {
-  "$comment": "Versioned expectation of which packages carry test:integration suites (AUD-01). CI fails if reality diverges in either direction. E03-T02 adds the first entry.",
-  "expected": []
+  "$comment": "Versioned expectation of which packages carry test:integration suites (AUD-01). CI fails if reality diverges in either direction. E03-T02 adds the first real entry: @corestack/platform's migration-runner integration tests (Testcontainers Postgres).",
+  "expected": ["@corestack/platform"]
 }

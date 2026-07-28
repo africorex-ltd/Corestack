@@ -55,3 +55,12 @@ export { shutdownGracefully } from "./application/graceful-shutdown.js";
 
 export type { MembershipLookup, ResolveContextInput } from "./application/resolve-context.js";
 export { resolveContext } from "./application/resolve-context.js";
+
+export { computeChainChecksum, computeAdvisoryLockKey } from "./domain/chain-checksum.js";
+
+export type {
+  ModuleMigrationState,
+  MigrationRunnerStore,
+  MigrationRunResult,
+} from "./application/migration-runner.js";
+export { runMigrations } from "./application/migration-runner.js";

@@ -25,13 +25,13 @@ for the first instance of this standard.
 
 ## Test & coverage
 
-| Metric               | Value                                                                                           |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| Test files / tests   | 24 files / **189 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 93) |
-| Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)             |
-| Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                |
-| Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                    |
-| Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                     |
+| Metric               | Value                                                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Test files / tests   | 27 files / **210 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 107 unit + 7 integration) |
+| Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                   |
+| Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                      |
+| Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                          |
+| Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                           |
 
 ## Architecture & API
 
@@ -44,12 +44,13 @@ for the first instance of this standard.
 
 ## CI health
 
-| Gate                  | Status                                                                            |
-| --------------------- | --------------------------------------------------------------------------------- |
-| Silent-success guards | ✅ `assert-turbo-tasks` on `test` (min 3) and `test:integration` (exact manifest) |
-| Actions supply chain  | ✅ All actions SHA-pinned; Renovate `pinDigests` maintains                        |
-| Release pipeline      | ⏸ Gated on `RELEASE_ENABLED` repo variable (awaiting npm org + token — external)  |
-| Dependency audit      | Scheduled lane (weekly + main), not PR-blocking (AUD-13 rationale)                |
+| Gate                  | Status                                                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Silent-success guards | ✅ `assert-turbo-tasks` on `test` (min 3) and `test:integration` (exact manifest — now non-trivially exercised: `@corestack/platform`) |
+| Integration lane      | ✅ Live: Testcontainers-based, no fixed service container needed (Docker on the runner is sufficient)                                  |
+| Actions supply chain  | ✅ All actions SHA-pinned; Renovate `pinDigests` maintains                                                                             |
+| Release pipeline      | ⏸ Gated on `RELEASE_ENABLED` repo variable (awaiting npm org + token — external)                                                       |
+| Dependency audit      | Scheduled lane (weekly + main), not PR-blocking (AUD-13 rationale)                                                                     |
 
 ## Benchmarks
 

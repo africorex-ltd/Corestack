@@ -43,6 +43,36 @@ multi-package train. Pre-1.0 semver: **minor may break, patch never does**
   Diagram, prose, and the cross-package fitness rule updated together so
   the enforced rule and the documented rule can never diverge again.
 
+- **E03-T02 `platform.module_migrations` runner:** applies a module's
+  pending migrations against real Postgres, with checksum drift detection
+  and a real cross-process advisory lock — the first task requiring Docker,
+  resumed after a Docker Desktop engine restart cleared a "unable to
+  start" daemon fault. The approved `platform.module_migrations` schema
+  stores one row per module, not one per migration file; drift detection
+  is implemented via a **cumulative chain checksum** over the whole
+  applied history (`sha256(checksum_1 + checksum_2 + ...)`) rather than
+  adding any column or table — the schema is honored exactly as designed.
+  `postgres` (porsager/postgres) added as platform's first
+  optional-peer-dependency vendor SDK (ADR-0010), exposed only via the new
+  `./postgres` subpath so the pure/in-memory parts of the package stay
+  dependency-light. 15 new tests: 8 pure orchestration tests plus **7 real
+  integration tests** (Testcontainers) proving actual DDL execution, real
+  transactional rollback on a failing migration, real drift detection
+  against a corrupted row, genuine cross-connection advisory-lock
+  serialization (racing two pools against the same `CREATE TABLE` — a
+  broken lock would surface as a live "relation already exists" error,
+  not a mocked assertion), and `CREATE INDEX CONCURRENTLY` succeeding
+  outside a transaction for `@concurrent: true` migrations. Two real bugs
+  caught before the suite ever passed: a missing `await` in the test's own
+  checksum comparison, and a module-name validation error from using an
+  underscored test-schema name where T01's approved hyphenated pattern was
+  required. `tooling/ci/integration-manifest.json` updated with the first
+  real entry (`@corestack/platform`); the CI workflow's now-dead fixed
+  `postgres:` service container + `DATABASE_URL` (superseded by
+  Testcontainers, which starts its own container per suite) removed as
+  discovered debt. Full component spec:
+  [packages/platform/docs/migration-runner.md](packages/platform/docs/migration-runner.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

@@ -37,24 +37,14 @@ jobs:
       - run: pnpm format:check
 
   integration:
-    name: Integration (Postgres 16)
+    name: Integration (Testcontainers)
     runs-on: ubuntu-latest
     needs: verify
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: corestack
-          POSTGRES_PASSWORD: corestack
-          POSTGRES_DB: corestack_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U corestack"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgres://corestack:corestack@localhost:5432/corestack_test
+    # No fixed `services:` container: suites in the manifest below use
+    # Testcontainers, which starts its own ephemeral Postgres per test file
+    # via the runner's Docker daemon (present by default on ubuntu-latest) —
+    # a static service block + DATABASE_URL would be dead configuration no
+    # test actually reads (exactly the AUD-01 class of silent-drift risk).
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
