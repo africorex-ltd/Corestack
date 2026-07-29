@@ -214,3 +214,26 @@ Platform integration: unchanged count after removing one now-duplicate
 test and adding three shared-suite tests (net swap, not additive) —
 91 → 93 once the shared suite's three tests are counted alongside the six
 remaining Postgres-specific ones.
+
+### Encrypter (T06) — 2026-07-29
+
+Only one implementation exists (`WebCryptoAesGcmEncrypter`); the port doc
+names a future KMS-backed adapter as a planned extension, not yet built —
+matrix row is `pending` for that column, the same status as `Logger`'s
+planned pino adapter, not `n/a`. The factory mirrors
+`WebCryptoAesGcmEncrypter.create`'s real construction shape (a raw key set
+plus which id is current) rather than a bare `() => T`, because the
+rotation assertion inherently needs two related instances built over
+overlapping key sets.
+
+Covers round-trip correctness, current-key-id tagging, rotation (an older
+key id still decrypts, new encryptions use the new id), tamper detection,
+unknown-key-id rejection, and — new, not previously asserted — that
+**neither failure path's error message ever contains the plaintext**, and
+that **two encryptions of the same plaintext produce different IVs and
+different ciphertexts** (GCM's randomized-IV requirement, previously
+implied by "12-byte IV" but never checked for actual per-call uniqueness).
+Kept adapter-specific: the exact 12-byte IV length, and construction-time
+rejection of a wrong-length key or an absent `currentKeyId` (both about
+`WebCryptoAesGcmEncrypter`'s own `create()` validation, not the `Encrypter`
+interface's `encrypt`/`decrypt` contract). Kernel: 103 → 107 tests.

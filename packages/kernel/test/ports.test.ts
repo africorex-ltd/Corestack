@@ -13,6 +13,7 @@ import {
 } from "../src/index.js";
 import {
   defineCacheContractSuite,
+  defineEncrypterContractSuite,
   defineLoggerContractSuite,
   defineRateLimiterContractSuite,
   type SuiteHarness,
@@ -242,53 +243,36 @@ describe("IdempotencyStore", () => {
   });
 });
 
-describe("Encrypter (WebCrypto AES-256-GCM)", () => {
+describe("WebCryptoAesGcmEncrypter via the shared Encrypter contract suite", () => {
+  defineEncrypterContractSuite(harness, (keys, currentKeyId) =>
+    WebCryptoAesGcmEncrypter.create(keys, currentKeyId),
+  );
+});
+
+describe("WebCryptoAesGcmEncrypter (adapter-specific)", () => {
   const keyA = new Uint8Array(32).fill(1);
-  const keyB = new Uint8Array(32).fill(2);
-  const plaintext = new TextEncoder().encode("totp-seed-material");
 
-  it("round-trips and uses the current key id", async () => {
+  it("the IV is exactly 12 bytes (AES-GCM's recommended nonce size)", async () => {
     const encrypter = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
-    const encrypted = await encrypter.encrypt(plaintext);
-
-    expect(encrypted.keyId).toBe("k1");
+    const encrypted = await encrypter.encrypt(new TextEncoder().encode("x"));
     expect(encrypted.iv).toHaveLength(12);
-    expect(await encrypter.decrypt(encrypted)).toEqual(plaintext);
   });
 
-  it("rotation: old key still decrypts, new encrypts under new id", async () => {
-    const before = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
-    const legacy = await before.encrypt(plaintext);
-
-    const after = await WebCryptoAesGcmEncrypter.create(
-      new Map([
-        ["k1", keyA],
-        ["k2", keyB],
-      ]),
-      "k2",
-    );
-    expect(await after.decrypt(legacy)).toEqual(plaintext);
-    expect((await after.encrypt(plaintext)).keyId).toBe("k2");
-  });
-
-  it("tampered ciphertext fails without detail", async () => {
+  it("both a tampered ciphertext and an unknown key id throw specifically CryptoFailureError", async () => {
     const encrypter = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
-    const encrypted = await encrypter.encrypt(plaintext);
+    const encrypted = await encrypter.encrypt(new TextEncoder().encode("x"));
     const tampered = new Uint8Array(encrypted.ciphertext);
     tampered[0] = (tampered[0] as number) ^ 0xff;
 
     await expect(encrypter.decrypt({ ...encrypted, ciphertext: tampered })).rejects.toThrow(
       CryptoFailureError,
     );
-  });
-
-  it("unknown key id and bad key material are rejected", async () => {
-    const encrypter = await WebCryptoAesGcmEncrypter.create(new Map([["k1", keyA]]), "k1");
-    const encrypted = await encrypter.encrypt(plaintext);
     await expect(encrypter.decrypt({ ...encrypted, keyId: "ghost" })).rejects.toThrow(
       CryptoFailureError,
     );
+  });
 
+  it("construction rejects a key of the wrong byte length or a currentKeyId absent from the key set", async () => {
     await expect(
       WebCryptoAesGcmEncrypter.create(new Map([["short", new Uint8Array(16)]]), "short"),
     ).rejects.toThrow(CryptoFailureError);

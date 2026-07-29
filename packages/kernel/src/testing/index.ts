@@ -24,3 +24,7 @@ export {
   type UnitOfWorkContractAdapter,
   type UnitOfWorkContractFactory,
 } from "./unit-of-work-contract.js";
+export {
+  defineEncrypterContractSuite,
+  type EncrypterContractFactory,
+} from "./encrypter-contract.js";

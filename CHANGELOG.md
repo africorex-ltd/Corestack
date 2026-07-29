@@ -588,6 +588,18 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   at 103 tests; platform integration at 93 (net +2 after removing one
   now-duplicate test and adding three shared-suite tests).
 
+- **E04-T06 Encrypter contract suite:** `defineEncrypterContractSuite`
+  proves `WebCryptoAesGcmEncrypter` against round-trip correctness,
+  current-key-id tagging, rotation, tamper detection, and unknown-key-id
+  rejection — plus two assertions not previously checked: neither failure
+  path's error message ever contains the plaintext, and two encryptions
+  of the same plaintext produce different IVs and different ciphertexts
+  (GCM's randomized-IV property, actually exercised for the first time).
+  Only one `Encrypter` implementation exists; a future KMS-backed adapter
+  is named in the port doc as planned but unbuilt — recorded as
+  **pending** in the certification matrix, the same status as `Logger`'s
+  planned pino adapter. Kernel now at 107 tests.
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
