@@ -50,6 +50,29 @@
 > environment blocker (no Docker), not attempted. Full record:
 > [contract-governance.md](../testing/contract-governance.md),
 > [adapter-certification-matrix.md](../testing/adapter-certification-matrix.md).
+> **E04 Consolidation and Release-Hardening Mode complete (2026-07-29)**:
+> [contract-coverage-audit.md](../testing/contract-coverage-audit.md) names,
+> honestly, which suites have real mutation proof (Logger, ProcessedEventStore,
+> IdempotencyStore's ADR-0020 case) vs. relocation-only (Cache, RateLimiter,
+> Encrypter, UnitOfWork; EventBus partial) — see Test & coverage below. A
+> repo-wide duplicate-test sweep found zero additional duplicates beyond
+> what the T03–T09 conversions already removed.
+> [snapshot-governance.md](../testing/snapshot-governance.md) codifies
+> what may/must-never be snapshotted; both existing snapshot files audited
+> as compliant. [performance/README.md](performance/) consolidates every
+> baseline across both benchmark directories.
+> [testcontainers-readiness.md](../testing/testcontainers-readiness.md)
+> prepares E04-T02 with no runtime code, confirming its real scope is
+> Postgres-only (no Redis/MinIO adapter exists to need one).
+> [export-surface-audit.md](../releases/export-surface-audit.md) found and
+> fixed two stale docs (kernel's package description, platform's README
+> test counts) and named a real gap: only kernel's main entry has an
+> export-surface snapshot — kernel's `./testing` subpath and all three of
+> platform's conditions are ungated.
+> [how-to-add-a-new-adapter.md](../contributing/how-to-add-a-new-adapter.md)
+> is now the canonical 7-step contributor workflow. Full verdict:
+> [e04-completion-report.md](../engineering/e04-completion-report.md) —
+> **E04 complete except the external Docker blocker**.
 
 ## Standing policy
 
@@ -74,11 +97,16 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 56 files / **454 tests** (kernel 110 · lint fixtures 15 · architecture fitness 31 · platform 194 unit + 97 integration · example module 3 unit + 4 integration) |
+| Test files / tests   | 56 files / **454 tests** — re-measured 2026-07-29 via direct `vitest run` per package (kernel 9 files/110 · lint fixtures 2/15 · architecture fitness 5/31 · platform 23/194 unit + 14/97 integration · example module 2/3 unit + 1/4 integration); unchanged from the prior measurement — no drift found |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
 | Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                                                                    |
+| Contract suites      | **8** — Cache, RateLimiter, Logger, EventBus, UnitOfWork, Encrypter, ProcessedEventStore, IdempotencyStore (Health-check is deliberately not a 9th — snapshot-tested instead, see matrix) |
+| Certified adapters   | **13** of 13 existing adapters certified against their port's suite (every un-certified pairing is an adapter that doesn't exist yet — pino `Logger`, KMS `Encrypter` — correctly `pending`, not missing) — see [adapter-certification-matrix.md](../testing/adapter-certification-matrix.md) |
+| Snapshot count       | **2 files / 4 snapshots** — kernel's `api-surface.test.ts` (1, main entry export list) + platform's `health-readiness.test.ts` (3, payload shapes); both audited against [snapshot-governance.md](../testing/snapshot-governance.md) and compliant |
+| Mutation-proven rules | **3 of 8 suites** have on-record proof an assertion catches a real regression (Logger: ADR-0022; ProcessedEventStore: UUID bug; IdempotencyStore: historical ADR-0020 case) + EventBus partial (1 of ~8 assertions, `ReverseOrderEventBus`) + the adapter-matrix fitness rule (renamed-class mutation test). Cache, RateLimiter, Encrypter, UnitOfWork have **no** mutation proof yet — named as a residual gap, not papered over, in [contract-coverage-audit.md](../testing/contract-coverage-audit.md) |
+| Performance baselines | **10** scripts total across two directories — 6 outbox subsystem + 4 E04 contract-suite adapters (RateLimiter, IdempotencyStore, ProcessedEventStore, UnitOfWork); none CI-gated, deferred to E04-T13 — see [performance/README.md](performance/) |
 
 ## Architecture & API
 
@@ -133,6 +161,9 @@ and [docs/quality/performance/](performance/).
 | `/contracts` types-only rule enforced structurally, not type-level                                                                                     | Fitness test blocks runtime deep-imports; full types-only proof needs the first contracts subpath to exist | E01-T02.4 (E05 gate) |
 | E03-T04 (migration authoring guide) never built                                                                                                        | Found at E03 exit review; low complexity (S/1d, DOC), not blocking any other epic                          | Unscheduled          |
 | Platform's own tables (`outbox`, `rate_limits`, `idempotency_keys`) bootstrap via `ensure*Schema` application code, not T02's tracked migration runner | No incident yet (no shape changes since shipping); no drift detection if one ever changes                  | Unscheduled          |
+| No export-surface snapshot for kernel's `./testing` subpath or any of platform's 3 conditions | Only kernel's main entry (`.`) is gated; an accidental rename/removal on the other 4 conditions has no automated signal — see [export-surface-audit.md](../releases/export-surface-audit.md) | Unscheduled — small, mechanical addition, natural first E04-follow-up task |
+| 4 of 8 contract suites (Cache, RateLimiter, Encrypter, UnitOfWork) have no mutation proof; EventBus only partial | Relocated from already-passing tests; no observed pre-fix failure or broken fixture on record for these — see [contract-coverage-audit.md](../testing/contract-coverage-audit.md) | Unscheduled — closing this retroactively is real follow-up work under Section 12's proposed permanent policy |
+| `manifest-rules.test.mjs` checks export-condition ordering only, not that declared `dist/` targets actually exist/resolve | Verified manually for this audit (all 5 conditions resolve); no regression today, but a future misconfigured subpath would only fail at consumer-import time | Unscheduled |
 
 ## Documentation coverage
 
@@ -156,6 +187,13 @@ same pass (E03-entry-review.md's runbook path; several component specs'
 Testcontainers-only test framing, once local Postgres 18 became a second
 mode). PostgreSQL 18 compatibility verified empirically — see
 [postgres-18-compatibility.md](../platform/postgres-18-compatibility.md).
+**E04 Consolidation and Release-Hardening Mode complete (2026-07-29)**: 6
+new docs — contract coverage audit, snapshot governance, consolidated
+performance README, Testcontainers readiness, export-surface audit, and
+the contributor "how to add a new adapter" guide (full index in the header
+note above). Two stale docs found and fixed in the same pass (kernel's
+`package.json` description omitted 2 shipped ports; platform's README
+scorecard cited pre-E04 test counts).
 
 ## Infrastructure maturity
 
