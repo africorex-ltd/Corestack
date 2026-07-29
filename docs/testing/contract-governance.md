@@ -307,3 +307,39 @@ and adding 10 shared-suite tests).
 
 **All seven contract suites from the founder's T03–T09 directive are now
 complete.** See the certification matrix for the full per-port status.
+
+## Fitness rules (Section 13)
+
+`packages/architecture-tests/test/contract-suite-adapter-matrix.test.mjs`
+implements the one of the three requested rules that's mechanically
+checkable: **every class implementing a kernel port must appear in
+`docs/testing/adapter-certification-matrix.md`.** Text-based, matching
+`class X implements <PortName>` — the same style as every other rule in
+that package — and proven against both the real repository (13 adapters
+found, all already present) and synthetic violating/passing fixtures.
+Verified to have real teeth: temporarily renamed `InMemoryLruCache` to a
+placeholder in the matrix, confirmed the test failed with exactly the
+expected violation message, restored it.
+
+**Not implemented, same triage as ADR-0021's rules 4/5:**
+
+- **"No adapter may bypass its contract suite."** Detecting whether a
+  specific test file *calls* the relevant `define*ContractSuite` function
+  (versus containing hand-written tests that happen to cover similar
+  ground) requires parsing call expressions and cross-referencing which
+  suite corresponds to which port — this package's regex/text scanner has
+  no notion of "this test file is for adapter X, which implements port Y,
+  which has suite Z." A text-pattern approximation risks the exact
+  false-confidence failure mode ADR-0021 warns against: silently passing
+  on a renamed import or an indirection.
+- **"No duplicated behavioural test blocks once a shared suite exists."**
+  Requires semantic comparison of test bodies (does this `it()` assert the
+  same thing the shared suite already does?) — categorically beyond a
+  text scanner. This is why every conversion in this effort was done by a
+  human (well, by the agent doing this work) reading both the old test
+  file and the new suite side by side and deciding what to remove, not by
+  a mechanical check.
+
+Both stay reviewed-convention items, stated here so a future contributor
+knows the check was considered and deliberately not automated, not
+overlooked.

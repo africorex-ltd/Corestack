@@ -642,6 +642,20 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   and [docs/testing/adapter-certification-matrix.md](docs/testing/adapter-certification-matrix.md)
   for the full record of all seven suites.
 
+- **Architecture fitness rule: every kernel-port adapter must appear in the
+  certification matrix.** `contract-suite-adapter-matrix.test.mjs` matches
+  `class X implements <PortName>` across kernel and platform source (the
+  same text-based style as every other fitness rule in this package),
+  proven against the real repository (13 adapters found, all present) and
+  synthetic violating/passing fixtures — verified to have real teeth by
+  temporarily removing a real adapter's mention from the matrix and
+  confirming the test caught it. Two of the three rules requested in the
+  founder's directive ("no adapter may bypass its contract suite," "no
+  duplicated behavioural test blocks") are deliberately not automated —
+  both need semantic comparison of test contents, beyond this package's
+  text-based scanning, the same triage already applied to two of
+  ADR-0021's five requested rules. Architecture fitness tests now at 31.
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
