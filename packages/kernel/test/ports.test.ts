@@ -13,40 +13,39 @@ import {
 } from "../src/index.js";
 import {
   defineCacheContractSuite,
+  defineLoggerContractSuite,
   defineRateLimiterContractSuite,
   type SuiteHarness,
 } from "../src/testing/index.js";
+import type { CapturedLogEntry } from "../src/logger.js";
 
 const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
-describe("Logger", () => {
-  it("CaptureLogger records entries with child fields merged into a shared sink", () => {
-    const root = new CaptureLogger();
-    const child = root.child({ module: "auth", correlationId: "c1" });
-    child.info("logged in", { userId: "u1" });
-    child.child({ deep: true }).warn("nested");
-    root.error("root level");
-
-    expect(root.entries).toEqual([
-      {
-        level: "info",
-        message: "logged in",
-        fields: { module: "auth", correlationId: "c1", userId: "u1" },
-      },
-      {
-        level: "warn",
-        message: "nested",
-        fields: { module: "auth", correlationId: "c1", deep: true },
-      },
-      { level: "error", message: "root level", fields: {} },
-    ]);
-  });
-
-  it("NoopLogger swallows everything and children are itself", () => {
+describe("Logger (adapter-specific)", () => {
+  it("NoopLogger swallows everything and children are itself (identity, not a normative port contract)", () => {
     const logger = new NoopLogger();
     expect(logger.child({ a: 1 })).toBe(logger);
     expect(() => logger.fatal("nothing happens")).not.toThrow();
   });
+
+  it("CaptureLogger children share their parent's entries sink by construction (AUD-09)", () => {
+    const root = new CaptureLogger();
+    const child = root.child({ module: "auth" });
+    child.info("from child");
+    root.warn("from root");
+    expect(root.entries.map((e) => e.message)).toEqual(["from child", "from root"]);
+  });
+});
+
+describe("CaptureLogger via the shared Logger contract suite", () => {
+  defineLoggerContractSuite(harness, () => {
+    const entries: CapturedLogEntry[] = [];
+    return { logger: new CaptureLogger({}, entries), entries: () => entries };
+  });
+});
+
+describe("NoopLogger via the shared Logger contract suite", () => {
+  defineLoggerContractSuite(harness, () => ({ logger: new NoopLogger(), entries: () => [] }));
 });
 
 describe("Cache", () => {

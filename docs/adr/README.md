@@ -27,6 +27,7 @@ supersedes the old one.
 | [0019](0019-idempotencystore-added-to-kernel.md)                 | `IdempotencyStore` added to the kernel (E03-T43 prerequisite) | Accepted |
 | [0020](0020-idempotencystore-organizationid-mandatory.md)        | `IdempotencyStore.begin`/`complete` require `organizationId`  | Accepted |
 | [0021](0021-globalrepository-marker-and-tenant-fitness-rules.md) | `GlobalRepository` marker + tenant-isolation fitness rules    | Accepted |
+| [0022](0022-logger-runtime-redaction-and-error-serialization.md) | `Logger` adapters must redact sensitive fields + serialize errors | Accepted |
 
 ## Writing an ADR
 

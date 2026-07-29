@@ -537,6 +537,25 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   Remaining kernel ports (EventBus, Encrypter, UnitOfWork, IdempotencyStore)
   are E04-T03's separate, larger task.
 
+- **SECURITY (ADR-0022): `Logger` adapters now redact `SENSITIVE_LOG_KEYS`
+  fields and stably serialize `Error` values at runtime.** Building the
+  `Logger` contract suite surfaced two real gaps in shipped kernel exports:
+  (1) the port doc claimed adapters "MUST redact" sensitive fields, but
+  neither `CaptureLogger` nor `NoopLogger` filtered anything — every
+  certification document describing this codebase's sensitive-log control
+  (AUD-08, `kernel-0.2.0-rc.md`, the security scorecard) describes only the
+  static eslint deny-list at call sites, never adapter-level redaction; (2)
+  `Error.prototype.message`/`.stack` are non-enumerable, so a plain
+  `{...error}` spread silently produced `{}` — any field logging a real
+  `Error` lost all its detail with no error or warning. New exports
+  `redactSensitiveFields`/`serializeErrorForLog`; `CaptureLogger` now
+  applies both before storing an entry. `NoopLogger` needed no change (it
+  captures nothing). Founder confirmed runtime redaction should be
+  normative (defense-in-depth behind, not a replacement for, the static
+  lint rule) when this fork was surfaced. New `defineLoggerContractSuite`
+  (`@corestack/kernel/testing`) proves both adapters against the corrected
+  contract; kernel now at 97 tests. Full analysis: ADR-0022.
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

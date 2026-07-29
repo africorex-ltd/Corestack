@@ -40,7 +40,12 @@
 > [contract-suite-framework.md](../../packages/kernel/docs/contract-suite-framework.md).
 > Cache/RateLimiter suites proven against both kernel's in-memory adapters
 > and platform's real `PostgresRateLimiter`; zero added runtime
-> dependencies (type-only vitest import). Remaining ports move to E04-T03.
+> dependencies (type-only vitest import). **E04-T03 Logger contract suite
+> done** (2026-07-29, ADR-0022): found and fixed a real gap — no adapter
+> redacted `SENSITIVE_LOG_KEYS` at runtime, and `Error` values silently
+> serialized to `{}`. See
+> [contract-governance.md](../testing/contract-governance.md) for the
+> full E04 executable-contracts effort and task-numbering note.
 
 ## Standing policy
 
@@ -65,7 +70,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 55 files / **411 tests** (kernel 81 · lint fixtures 15 · architecture fitness 26 · platform 191 unit + 91 integration · example module 3 unit + 4 integration) |
+| Test files / tests   | 55 files / **427 tests** (kernel 97 · lint fixtures 15 · architecture fitness 26 · platform 191 unit + 91 integration · example module 3 unit + 4 integration) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
@@ -75,7 +80,7 @@ for the first instance of this standard.
 
 | Metric                      | Value                                                                                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| ADRs accepted               | **21** (0001–0021)                                                                                                                           |
+| ADRs accepted               | **22** (0001–0022)                                                                                                                           |
 | Architecture fitness tests  | **Live in CI**: layer boundaries (lint zones + fixtures), import cycles, cross-package boundaries, manifest/ADR compliance, kernel zero-deps |
 | Public API stability        | Kernel runtime surface snapshot-gated; full type-level report at E19-T14                                                                     |
 | Kernel runtime dependencies | **0** (fitness-test-enforced)                                                                                                                |

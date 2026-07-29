@@ -10,3 +10,8 @@ export {
   defineRateLimiterContractSuite,
   type RateLimiterContractFactory,
 } from "./rate-limiter-contract.js";
+export {
+  defineLoggerContractSuite,
+  type LoggerContractAdapter,
+  type LoggerContractFactory,
+} from "./logger-contract.js";

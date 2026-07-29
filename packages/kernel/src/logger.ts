@@ -2,11 +2,16 @@
  * The `Logger` port (Architecture §30).
  *
  * Modules log through this port exclusively — never `console` (lint-enforced).
- * Contract for adapters: structured JSON output, redaction of sensitive keys
- * (see `SENSITIVE_LOG_KEYS` — the same deny-list the lint rule guards), and
- * inclusion of child-bound context fields on every line. The kernel ships a
- * no-op default and a capturing test logger; the pino reference adapter
- * arrives with the platform package.
+ * Contract for adapters: structured JSON output, inclusion of child-bound
+ * context fields on every line, and **runtime redaction** of
+ * `SENSITIVE_LOG_KEYS` fields via `redactSensitiveFields` — defense-in-depth
+ * behind the static eslint deny-list, which only catches literal field names
+ * at the call site, not fields assigned via a dynamic key. `Error` values
+ * must be passed through `serializeErrorForLog` first (a plain `{...error}`
+ * spread silently loses `message`/`stack`, which are non-enumerable). The
+ * kernel ships a no-op default and a capturing test logger, both applying
+ * this contract; the pino reference adapter arrives with the platform
+ * package and must apply it too.
  */
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
@@ -47,6 +52,41 @@ export const SENSITIVE_LOG_KEYS: readonly string[] = [
   "setCookie",
 ];
 
+const REDACTED = "[REDACTED]";
+
+/**
+ * `Error`'s own `message`/`stack` properties are non-enumerable, so a plain
+ * `{...error}` spread (or `JSON.stringify`) silently produces `{}` — every
+ * detail lost. Every `Logger` adapter must call this before storing/emitting
+ * a field whose value is an `Error`, so a caller logging `{ err }` gets a
+ * stable, complete record rather than an empty object.
+ */
+export function serializeErrorForLog(error: Error): Readonly<Record<string, unknown>> {
+  const { name, message, stack, ...rest } = error as Error & Record<string, unknown>;
+  return Object.freeze({ name, message, stack, ...rest });
+}
+
+/**
+ * Redacts `SENSITIVE_LOG_KEYS` fields and stably serializes `Error` values.
+ * This is defense-in-depth behind the static eslint deny-list (which only
+ * catches literal field names at the call site, not fields assigned via a
+ * dynamic key) — every `Logger` adapter must apply this to its final,
+ * merged field set before storing/emitting it. Never mutates `fields`.
+ */
+export function redactSensitiveFields(fields: LogFields): LogFields {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (SENSITIVE_LOG_KEYS.includes(key)) {
+      result[key] = REDACTED;
+    } else if (value instanceof Error) {
+      result[key] = serializeErrorForLog(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return Object.freeze(result);
+}
+
 export class NoopLogger implements Logger {
   trace(_message: string, _fields?: LogFields): void {}
   debug(_message: string, _fields?: LogFields): void {}
@@ -79,7 +119,11 @@ export class CaptureLogger implements Logger {
   }
 
   #log(level: LogLevel, message: string, fields: LogFields = {}): void {
-    this.entries.push({ level, message, fields: { ...this.#bound, ...fields } });
+    this.entries.push({
+      level,
+      message,
+      fields: redactSensitiveFields({ ...this.#bound, ...fields }),
+    });
   }
 
   trace(message: string, fields?: LogFields): void {

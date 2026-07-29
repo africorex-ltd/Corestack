@@ -43,6 +43,8 @@ exports[`kernel public surface > runtime exports are intentional 1`] = `
   "mapAsync",
   "mapErr",
   "ok",
+  "redactSensitiveFields",
+  "serializeErrorForLog",
   "serializeEvent",
   "systemContext",
   "unwrapOr",

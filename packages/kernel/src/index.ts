@@ -46,7 +46,13 @@ export type { EventHandler, EventSubscription, Unsubscribe, EventBus } from "./e
 export { InMemoryEventBus } from "./event-bus.js";
 
 export type { LogLevel, LogFields, Logger, CapturedLogEntry } from "./logger.js";
-export { SENSITIVE_LOG_KEYS, NoopLogger, CaptureLogger } from "./logger.js";
+export {
+  SENSITIVE_LOG_KEYS,
+  NoopLogger,
+  CaptureLogger,
+  redactSensitiveFields,
+  serializeErrorForLog,
+} from "./logger.js";
 
 export type { Cache } from "./cache.js";
 export { versionedKey, InMemoryLruCache } from "./cache.js";
