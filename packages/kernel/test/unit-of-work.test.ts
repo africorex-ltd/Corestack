@@ -4,14 +4,17 @@ import {
   createContext,
   createEvent,
   FixedClock,
-  idempotentHandler,
   InMemoryEventBus,
   InMemoryProcessedEventStore,
   InMemoryUnitOfWork,
   SequentialIdGenerator,
   type DomainEvent,
 } from "../src/index.js";
-import { defineUnitOfWorkContractSuite, type SuiteHarness } from "../src/testing/index.js";
+import {
+  defineProcessedEventStoreContractSuite,
+  defineUnitOfWorkContractSuite,
+  type SuiteHarness,
+} from "../src/testing/index.js";
 
 const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
@@ -91,52 +94,6 @@ describe("InMemoryUnitOfWork (adapter-specific)", () => {
   });
 });
 
-describe("idempotentHandler", () => {
-  it("invokes the handler exactly once per (consumer, event id)", async () => {
-    const store = new InMemoryProcessedEventStore();
-    let calls = 0;
-    const handler = idempotentHandler("audit", store, () => {
-      calls += 1;
-    });
-
-    const event = makeEvent();
-    await handler(event);
-    await handler(event); // redelivery
-    expect(calls).toBe(1);
-  });
-
-  it("AUD-02 regression: a failed event stays unmarked and is retried on redelivery", async () => {
-    // Before the fix, the event was marked BEFORE handling, so a handler
-    // failure permanently lost the event (at-most-once). At-least-once
-    // requires the failure path to leave the event retryable.
-    const store = new InMemoryProcessedEventStore();
-    let attempts = 0;
-    const handler = idempotentHandler("audit", store, () => {
-      attempts += 1;
-      if (attempts === 1) throw new Error("transient failure");
-    });
-
-    const event = makeEvent();
-    await expect(handler(event)).rejects.toThrow("transient failure");
-    expect(await store.hasProcessed("audit", event.id)).toBe(false);
-
-    await handler(event); // redelivery succeeds
-    expect(attempts).toBe(2);
-    expect(await store.hasProcessed("audit", event.id)).toBe(true);
-
-    await handler(event); // further redelivery is a no-op
-    expect(attempts).toBe(2);
-  });
-
-  it("dedupes per consumer, not globally", async () => {
-    const store = new InMemoryProcessedEventStore();
-    const calls: string[] = [];
-    const auditHandler = idempotentHandler("audit", store, () => void calls.push("audit"));
-    const webhookHandler = idempotentHandler("webhooks", store, () => void calls.push("webhooks"));
-
-    const event = makeEvent();
-    await auditHandler(event);
-    await webhookHandler(event);
-    expect(calls).toEqual(["audit", "webhooks"]);
-  });
+describe("InMemoryProcessedEventStore via the shared ProcessedEventStore contract suite", () => {
+  defineProcessedEventStoreContractSuite(harness, () => new InMemoryProcessedEventStore());
 });

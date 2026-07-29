@@ -15,7 +15,7 @@
 | `EventBus`           | `InMemoryEventBus`         | — (outbox relay is a different mechanism, not an `EventBus` implementation) | in-memory: **certified** (T04). Postgres: **not applicable** |
 | `UnitOfWork`         | `InMemoryUnitOfWork`       | `PostgresUnitOfWork`           | both: **certified** (T05) — first end-to-end proof of the UnitOfWork → outbox → relay pipeline via a real `OutboxRelay.pollOnce()` |
 | `Encrypter`          | `WebCryptoAesGcmEncrypter` | — (KMS-backed adapter named in the port doc as a future extension, not yet built) | WebCrypto: **certified** (T06). KMS: **pending** |
-| `ProcessedEventStore`| `InMemoryProcessedEventStore` | `PostgresProcessedEventStore` | pending                                                                 |
+| `ProcessedEventStore`| `InMemoryProcessedEventStore` | `PostgresProcessedEventStore` | both: **certified** (T07) — found and fixed a real UUID-vs-readable-id bug in the suite itself before it shipped |
 | `IdempotencyStore`   | `InMemoryIdempotencyStore` | `PostgresIdempotencyStore`     | pending                                                                 |
 | Health-check (`checkLiveness`/`checkReadiness`) | n/a | n/a | **not applicable** — these are platform functions taking dependencies as parameters, not a port with swappable implementations; there is nothing for a contract-suite factory to construct. Covered instead by snapshot tests over the JSON payload shape (see contract-governance.md's snapshot-update rules). |
 

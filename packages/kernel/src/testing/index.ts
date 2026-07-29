@@ -28,3 +28,7 @@ export {
   defineEncrypterContractSuite,
   type EncrypterContractFactory,
 } from "./encrypter-contract.js";
+export {
+  defineProcessedEventStoreContractSuite,
+  type ProcessedEventStoreContractFactory,
+} from "./processed-event-store-contract.js";

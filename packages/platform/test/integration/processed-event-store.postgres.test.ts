@@ -1,25 +1,23 @@
 /**
- * Real-Postgres integration tests for E03-T14. First proves
- * `PostgresProcessedEventStore` satisfies the exact same behavioral
- * contract the kernel already verifies for `InMemoryProcessedEventStore`
- * (packages/kernel/test/unit-of-work.test.ts's `idempotentHandler`
- * suite) — invoked exactly once per (consumer, event id) across
- * redelivery, and a failed handler leaves the event unmarked and
- * retryable. Then proves the Postgres-specific angle no in-memory store
- * can: genuine same-transaction atomicity between a handler's own state
- * change and the processed-event mark.
+ * Real-Postgres integration tests for E03-T14. The shared
+ * `ProcessedEventStore` contract suite (`@corestack/kernel/testing`, E04)
+ * proves `PostgresProcessedEventStore` satisfies the exact same behavioral
+ * contract kernel's own `InMemoryProcessedEventStore` proves — invoked
+ * exactly once per (consumer, event id) across redelivery, a failed
+ * handler leaves the event unmarked and retryable, scope isolation — no
+ * hand-mirrored duplicate needed. This file then proves the
+ * Postgres-specific angle no in-memory store can: genuine same-transaction
+ * atomicity between a handler's own state change and the processed-event
+ * mark.
  */
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createContext, createEvent, FixedClock, UuidGenerator, type DomainEvent } from "@corestack/kernel";
 import {
-  createContext,
-  createEvent,
-  FixedClock,
-  idempotentHandler,
-  UuidGenerator,
-  type DomainEvent,
-} from "@corestack/kernel";
+  defineProcessedEventStoreContractSuite,
+  type SuiteHarness,
+} from "@corestack/kernel/testing";
 import type { Sql } from "postgres";
 
 import { ensureOutboxSchema } from "../../src/infrastructure/postgres-outbox-schema.js";
@@ -56,65 +54,13 @@ beforeEach(async () => {
   await sql.unsafe(`CREATE TABLE invoices (id uuid PRIMARY KEY)`);
 });
 
-describe("PostgresProcessedEventStore (E03-T14 integration)", () => {
-  it("hasProcessed is false before markProcessed and true after — the port's basic contract", async () => {
-    const store = new PostgresProcessedEventStore(sql);
-    const event = makeEvent();
+const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
-    expect(await store.hasProcessed("audit", event.id)).toBe(false);
-    await store.markProcessed("audit", event.id);
-    expect(await store.hasProcessed("audit", event.id)).toBe(true);
-  });
+describe("PostgresProcessedEventStore via the shared ProcessedEventStore contract suite", () => {
+  defineProcessedEventStoreContractSuite(harness, () => new PostgresProcessedEventStore(sql));
+});
 
-  it("markProcessed is idempotent: marking the same (consumer, event id) twice does not error", async () => {
-    const store = new PostgresProcessedEventStore(sql);
-    const event = makeEvent();
-
-    await store.markProcessed("audit", event.id);
-    await expect(store.markProcessed("audit", event.id)).resolves.toBeUndefined();
-  });
-
-  it("via idempotentHandler: invokes the handler exactly once per (consumer, event id), replay is a no-op", async () => {
-    const store = new PostgresProcessedEventStore(sql);
-    let calls = 0;
-    const handler = idempotentHandler("audit", store, () => {
-      calls += 1;
-    });
-
-    const event = makeEvent();
-    await handler(event);
-    await handler(event); // redelivery
-
-    expect(calls).toBe(1);
-  });
-
-  it("via idempotentHandler: a failed event stays unmarked and is retried on redelivery (at-least-once, not at-most-once)", async () => {
-    const store = new PostgresProcessedEventStore(sql);
-    let attempts = 0;
-    const handler = idempotentHandler("audit", store, () => {
-      attempts += 1;
-      if (attempts === 1) throw new Error("transient failure");
-    });
-
-    const event = makeEvent();
-    await expect(handler(event)).rejects.toThrow("transient failure");
-    expect(await store.hasProcessed("audit", event.id)).toBe(false);
-
-    await handler(event); // redelivery succeeds
-    expect(attempts).toBe(2);
-    expect(await store.hasProcessed("audit", event.id)).toBe(true);
-  });
-
-  it("two different consumers have independent processed state for the same event id", async () => {
-    const store = new PostgresProcessedEventStore(sql);
-    const event = makeEvent();
-
-    await store.markProcessed("audit", event.id);
-
-    expect(await store.hasProcessed("audit", event.id)).toBe(true);
-    expect(await store.hasProcessed("billing", event.id)).toBe(false);
-  });
-
+describe("PostgresProcessedEventStore (E03-T14 integration, Postgres-specific)", () => {
   it("bound to an open transaction, markProcessed commits atomically with the handler's own state change", async () => {
     const invoiceId = randomUUID();
     const event = makeEvent();
@@ -148,5 +94,19 @@ describe("PostgresProcessedEventStore (E03-T14 integration)", () => {
     const marked = await new PostgresProcessedEventStore(sql).hasProcessed("invoicing", event.id);
     expect(invoiceRows).toHaveLength(0);
     expect(marked).toBe(false);
+  });
+
+  it("concurrent callers racing to mark the same (consumer, event id) never error — ON CONFLICT DO NOTHING absorbs the race", async () => {
+    const store = new PostgresProcessedEventStore(sql);
+    const event = makeEvent();
+
+    // Only meaningful against real shared storage: a single-threaded
+    // in-memory Set can't race with itself, so this stays a
+    // Postgres-specific adjunct, not part of the portable suite.
+    await Promise.all(
+      Array.from({ length: 10 }, () => store.markProcessed("audit", event.id)),
+    );
+
+    expect(await store.hasProcessed("audit", event.id)).toBe(true);
   });
 });

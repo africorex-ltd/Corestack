@@ -237,3 +237,31 @@ Kept adapter-specific: the exact 12-byte IV length, and construction-time
 rejection of a wrong-length key or an absent `currentKeyId` (both about
 `WebCryptoAesGcmEncrypter`'s own `create()` validation, not the `Encrypter`
 interface's `encrypt`/`decrypt` contract). Kernel: 103 → 107 tests.
+
+### ProcessedEventStore (T07) — 2026-07-29
+
+Covers `hasProcessed`/`markProcessed` basic contract, idempotent marking,
+consumer- and event-id scope isolation, and — via `idempotentHandler` —
+exactly-once-per-redelivery plus at-least-once retry on failure (the
+existing kernel/Postgres tests these replaced, relocated and consolidated,
+not duplicated). Kept adapter-specific: genuine concurrent-write races
+(added as a Postgres adjunct, 10 concurrent `markProcessed` calls on the
+same pair, same reasoning as `RateLimiter`'s 20-caller test) and
+same-transaction atomicity with a handler's own state change (a
+caller-composition concern the generic `idempotentHandler` wrapper can't
+provide by itself — see `PostgresProcessedEventStore`'s own doc comment).
+"Cleanup safety" (requested in the founder directive) doesn't apply to
+this port at all — it has no cleanup/prune method; retention of old
+`platform.processed_events` rows is `maintainOutboxPartitions`'s concern,
+already tested there.
+
+**Real bug caught by the suite itself, before it shipped:** the first
+version used readable literal ids (`"evt-1"`, `"evt-2"`) — passed against
+kernel's in-memory adapter, then failed all 6 shared-suite tests against
+`PostgresProcessedEventStore` with `invalid input syntax for type uuid:
+"evt-1"` the instant it ran against real Postgres (`platform.processed_
+events.event_id` is a `uuid` column). Fixed by switching to real UUID
+literals — the same "UUID vs readable-id" gotcha already documented
+elsewhere in this codebase's integration tests, now also documented here
+as a reminder for any future suite with a similarly-typed column. Kernel:
+107 → 110 tests. Platform integration: 93 → 95.

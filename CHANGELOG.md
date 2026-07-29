@@ -600,6 +600,22 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   **pending** in the certification matrix, the same status as `Logger`'s
   planned pino adapter. Kernel now at 107 tests.
 
+- **E04-T07 ProcessedEventStore contract suite:**
+  `defineProcessedEventStoreContractSuite` proves both
+  `InMemoryProcessedEventStore` and `PostgresProcessedEventStore` against
+  `hasProcessed`/`markProcessed`'s basic contract, idempotent marking,
+  consumer/event-id scope isolation, and — via `idempotentHandler` —
+  exactly-once-per-redelivery plus at-least-once retry on failure. Kept
+  adapter-specific: a genuine concurrent-write race (new Postgres adjunct,
+  10 concurrent `markProcessed` calls) and same-transaction atomicity with
+  a handler's own state change. **Caught a real bug in the suite itself
+  before it shipped:** the first version used readable literal ids
+  (`"evt-1"`) — passed against the in-memory adapter, then failed every
+  shared-suite test against Postgres with `invalid input syntax for type
+  uuid` the instant it ran for real (`event_id` is a `uuid` column). Fixed
+  by switching to real UUID literals. Kernel now at 110 tests; platform
+  integration at 95.
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
