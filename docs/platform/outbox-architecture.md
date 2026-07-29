@@ -22,32 +22,38 @@ never disagree.
 
 ## The eleven stages
 
-| #   | Stage                    | Status                                                          | Where                                                                                                                        |
-| --- | ------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Use case                 | **Partial** — use cases call `writeOutboxEvents` directly today | application layer of each feature package (not platform's job)                                                               |
-| 2   | Unit of Work             | **Not yet built** — E03-T40                                     | future `packages/platform/src/infrastructure/postgres-unit-of-work.ts`                                                       |
-| 3   | Staging                  | Live                                                            | `createOutboxStaging()` — [outbox-writer.md](../../packages/platform/docs/outbox-writer.md)                                  |
-| 4   | Write                    | Live                                                            | `writeOutboxEvents(sql, events)`                                                                                             |
-| 5   | Relay                    | Live                                                            | `OutboxRelay` — [outbox-relay.md](../../packages/platform/docs/outbox-relay.md)                                              |
-| 6   | Checkpoints              | Live                                                            | `platform.outbox_checkpoints`, `OutboxRelayStore`                                                                            |
-| 7   | Processed events         | Live                                                            | `PostgresProcessedEventStore`, `idempotentHandler` (kernel)                                                                  |
-| 8   | Partition maintenance    | Live                                                            | `maintainOutboxPartitions` — [outbox-partition-maintenance.md](../../packages/platform/docs/outbox-partition-maintenance.md) |
-| 9   | Retention                | Live (opt-in)                                                   | same module, `retentionMonths`                                                                                               |
-| 10  | Crash recovery           | Proven, not a component                                         | [outbox-crash-consistency.md](../../packages/platform/docs/outbox-crash-consistency.md) — a test suite, not code             |
-| 11  | Redelivery / idempotency | Live                                                            | `ProcessedEventStore` + consumer discipline                                                                                  |
+| #   | Stage                    | Status                                                       | Where                                                                                                                        |
+| --- | ------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Use case                 | Live (routes through `UnitOfWork` where a module chooses to) | application layer of each feature package (not platform's job)                                                               |
+| 2   | Unit of Work             | Live — E03-T40                                               | `PostgresUnitOfWork` — [unit-of-work.md](../../packages/platform/docs/unit-of-work.md)                                       |
+| 3   | Staging                  | Live                                                         | `createOutboxStaging()` — [outbox-writer.md](../../packages/platform/docs/outbox-writer.md)                                  |
+| 4   | Write                    | Live                                                         | `writeOutboxEvents(sql, events)`                                                                                             |
+| 5   | Relay                    | Live                                                         | `OutboxRelay` — [outbox-relay.md](../../packages/platform/docs/outbox-relay.md)                                              |
+| 6   | Checkpoints              | Live                                                         | `platform.outbox_checkpoints`, `OutboxRelayStore`                                                                            |
+| 7   | Processed events         | Live                                                         | `PostgresProcessedEventStore`, `idempotentHandler` (kernel)                                                                  |
+| 8   | Partition maintenance    | Live                                                         | `maintainOutboxPartitions` — [outbox-partition-maintenance.md](../../packages/platform/docs/outbox-partition-maintenance.md) |
+| 9   | Retention                | Live (opt-in)                                                | same module, `retentionMonths`                                                                                               |
+| 10  | Crash recovery           | Proven, not a component                                      | [outbox-crash-consistency.md](../../packages/platform/docs/outbox-crash-consistency.md) — a test suite, not code             |
+| 11  | Redelivery / idempotency | Live                                                         | `ProcessedEventStore` + consumer discipline                                                                                  |
 
-Stages 3 through 9 are all shipped, tested against real Postgres, and
-documented as individual products. Stages 1 and 2 are honestly incomplete:
-**there is no `UnitOfWork` port implementation yet.** Today, a use case that
-wants outbox delivery opens its own `sql.begin()`, does its state-changing
-writes, and calls `writeOutboxEvents(tx, events)` inside the same
-transaction — this is exactly what T13's crash-consistency suite exercises.
-E03-T40 will introduce a real `UnitOfWork` adapter; once it exists, use
-cases route through it instead of managing their own transaction, and this
-document's stage 1/2 boxes flip from "partial" to "live." T11/T12/T14 each
-deliberately declined to build `UnitOfWork` early specifically so T40 could
-design it without a preempted contract — see the epic's design notes in
-each component spec's "Design rationale" section.
+All eleven stages are now shipped, tested against real Postgres, and
+documented as individual products. `PostgresUnitOfWork` (E03-T40) gives
+use cases a real `UnitOfWork.run()` to route through — inside its callback,
+repository/state-changing writes go through `ctx.sql` (the open
+transaction), and staged events flush atomically before commit via T11's
+`createOutboxStaging`. A use case may still open its own `sql.begin()` and
+call `writeOutboxEvents(tx, events)` directly (this is exactly what T13's
+crash-consistency suite exercises, and remains valid for callers with no
+other need for a `UnitOfWork`); routing through `PostgresUnitOfWork` is the
+now-available, not mandatory, path. T11/T12/T14 each deliberately declined
+to build `UnitOfWork` early specifically so T40 could design it without a
+preempted contract — see the epic's design notes in each component spec's
+"Design rationale" section, and [unit-of-work.md](../../packages/platform/docs/unit-of-work.md)
+for T40's own contract (including why `TransactionContext` needed an
+additive `sql` extension, and the transaction-ownership rule this
+introduces: `withOrgContext`/`runOrgScopedQuery` (T30/T31) are for use
+_outside_ a `UnitOfWork.run()` call only, since neither supports nesting a
+second `.begin()`).
 
 ## Sequence diagram — write path through first successful delivery
 
@@ -130,7 +136,9 @@ invocation.
    This governs both the relay's initial fetch (no cursor = start from the
    beginning) and partition retention's safety check (no checkpoint row for
    an expected consumer blocks every partition that consumer would need).
-4. **The relay and the `UnitOfWork` are not the same thing, and the latter
-   doesn't exist yet.** Don't wait for T40 to start using the outbox — use
-   the transaction pattern shown in the sequence diagram above until it
-   lands.
+4. **The relay and the `UnitOfWork` are not the same thing.** `PostgresUnitOfWork`
+   (T40) scopes one transaction per use case and flushes staged events
+   before commit; the relay (T12) is the separate, asynchronous process
+   that later delivers those committed events to consumers. Using a
+   `UnitOfWork` doesn't skip the relay — it only replaces how a use case
+   opens its transaction and stages events.

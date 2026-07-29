@@ -85,10 +85,9 @@ export class PostgresMigrationRunnerStore implements MigrationRunnerStore {
 
     // Transactional path: the migration and the tracking-row update commit
     // or roll back together — inlined here (rather than shared with the
-    // @concurrent path above) because `tx` inside `.begin()` is a
-    // `TransactionSql`, a distinct type from the pool's `Sql` that doesn't
-    // share a common query-callable supertype worth fighting the library's
-    // types over for two lines of duplicated SQL.
+    // @concurrent path above) since it's two lines of duplicated SQL, not
+    // because of a typing limitation: `Sql` and `TransactionSql` do share a
+    // common query-callable supertype (`ISql`, discovered in E03-T11).
     await this.#sql.begin(async (tx) => {
       await tx.unsafe(migration.sql);
       await tx`

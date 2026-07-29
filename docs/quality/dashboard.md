@@ -2,8 +2,8 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-29** (E03 in progress: outbox epic
-> T02-T03, T10-T14 done; Infrastructure Consolidation pass complete;
+> estimated. Last update: **2026-07-29** (**E03 COMPLETE** — 21 of 22 tasks;
+> outbox epic T02-T03, T10-T14 done; Infrastructure Consolidation pass complete;
 > migrated local dev/test to PostgreSQL 18 — see
 > [postgres-18-compatibility.md](../platform/postgres-18-compatibility.md);
 > T23 health/readiness done — see
@@ -24,7 +24,9 @@
 > **E03 now COMPLETE**: T43 Postgres IdempotencyStore adapter done
 > (ADR-0019 added the `IdempotencyStore` port to the kernel, a blueprint
 > prerequisite gap) — see
-> [idempotency-key-store.md](../../packages/platform/docs/idempotency-key-store.md)).
+> [idempotency-key-store.md](../../packages/platform/docs/idempotency-key-store.md).
+> Full epic-exit Engineering Health Report — see
+> [E03-exit-report.md](../engineering/reviews/E03-exit-report.md)).
 
 ## Standing policy
 
@@ -91,17 +93,27 @@ and [baselines/outbox/](architecture-benchmarks/baselines/outbox/).
 
 ## Technical debt register (must be zero or justified)
 
-| Item                                                               | Justification                                                                                              | Retires at           |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------- |
-| Type-level API report deferred                                     | Runtime snapshot covers surface pre-1.0; api-extractor tooling costs unjustified before freeze             | E19-T14              |
-| Coverage not CI-gated                                              | Gate lands with the test-infrastructure epic                                                               | E04-T11              |
-| `/contracts` types-only rule enforced structurally, not type-level | Fitness test blocks runtime deep-imports; full types-only proof needs the first contracts subpath to exist | E01-T02.4 (E05 gate) |
+| Item                                                                                                                                                   | Justification                                                                                              | Retires at           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------- |
+| Type-level API report deferred                                                                                                                         | Runtime snapshot covers surface pre-1.0; api-extractor tooling costs unjustified before freeze             | E19-T14              |
+| Coverage not CI-gated                                                                                                                                  | Gate lands with the test-infrastructure epic                                                               | E04-T11              |
+| `/contracts` types-only rule enforced structurally, not type-level                                                                                     | Fitness test blocks runtime deep-imports; full types-only proof needs the first contracts subpath to exist | E01-T02.4 (E05 gate) |
+| E03-T04 (migration authoring guide) never built                                                                                                        | Found at E03 exit review; low complexity (S/1d, DOC), not blocking any other epic                          | Unscheduled          |
+| Platform's own tables (`outbox`, `rate_limits`, `idempotency_keys`) bootstrap via `ensure*Schema` application code, not T02's tracked migration runner | No incident yet (no shape changes since shipping); no drift detection if one ever changes                  | Unscheduled          |
 
 ## Documentation coverage
 
-All 16 ADRs current · design docs (architecture/database/api) versioned ·
+All 19 ADRs current · design docs (architecture/database/api) versioned ·
 5 guide structures approved · overview.md reconciled (AUD-11) ·
-docs drift-check joins every epic-exit checklist (AUD-19). Outbox
+docs drift-check joins every epic-exit checklist (AUD-19). **E03 exit
+review complete (2026-07-29)** — see
+[E03-exit-report.md](../engineering/reviews/E03-exit-report.md) and the
+epic's two lessons-learned files
+([outbox](../engineering/lessons/e03-outbox-epic.md),
+[tenant isolation & adapters](../engineering/lessons/e03-tenant-isolation-and-adapters.md));
+this pass caught and fixed two stale docs (`outbox-architecture.md`'s
+T40 status, a stale code comment about `Sql`/`TransactionSql` typing) and
+one never-built task (E03-T04, now tracked debt above). Outbox
 subsystem consolidated (2026-07-28): end-to-end architecture map with
 sequence diagram, operational runbook, security review, observability
 contract, and health/readiness contract — see
@@ -114,14 +126,18 @@ mode). PostgreSQL 18 compatibility verified empirically — see
 
 ## Infrastructure maturity
 
-**83/100** as of the outbox-epic Infrastructure Consolidation pass
-(2026-07-28, revised after a real benchmark baseline was captured) —
-scored per-dimension (contract completeness, test rigor, operational
-readiness, security posture, performance visibility, documentation
-coherence) in
-[E03-outbox-milestone-report.md §6](../engineering/reviews/E03-outbox-milestone-report.md).
-Scope: the outbox subsystem only, not all of E03 or the whole platform
-package. Held back mainly by operational tooling maturity (runbook
+**79/100** as of the E03 epic-exit re-score (2026-07-29), covering the
+whole epic — RLS/org-scoping, composition root, health/readiness,
+graceful shutdown, and all four Postgres adapters — not just the outbox
+subsystem the prior 83/100 scored. Scored per-dimension (contract
+completeness, test rigor, operational readiness, security posture,
+performance visibility, documentation coherence) in
+[E03-exit-report.md §5](../engineering/reviews/E03-exit-report.md). The
+outbox-only 83/100 (2026-07-28,
+[E03-outbox-milestone-report.md §6](../engineering/reviews/E03-outbox-milestone-report.md))
+remains historically accurate for that narrower scope; the drop isn't a
+regression, it's a wider, less-weathered surface being scored honestly for
+the first time. Held back mainly by operational tooling maturity (runbook
 procedures like replay are manual SQL, not yet a built API) and
-performance visibility (real baseline now exists, but single-machine and
-unthresholded).
+performance visibility (a baseline exists only for outbox hot paths; T30/T31/T33/T40/T41/T43's
+Postgres operations are proven correct under concurrency but unbenchmarked).
