@@ -4,6 +4,7 @@ import {
   CaptureLogger,
   CryptoFailureError,
   FixedClock,
+  InMemoryIdempotencyStore,
   InMemoryLruCache,
   InMemoryRateLimiter,
   NoopLogger,
@@ -145,6 +146,80 @@ describe("RateLimiter", () => {
 
     expect(limiter.bucketCount).toBeLessThanOrEqual(3);
     expect((await limiter.consume("live-3", policy)).allowed).toBe(true);
+  });
+});
+
+describe("IdempotencyStore", () => {
+  it("a fresh (scope, key) starts, then completes and replays with the same body", async () => {
+    const store = new InMemoryIdempotencyStore();
+    expect(await store.begin("orders", "k1", "hash-a", 60_000)).toEqual({ outcome: "started" });
+
+    await store.complete("orders", "k1", "hash-a", { orderId: "o1" }, 60_000);
+    expect(await store.begin("orders", "k1", "hash-a", 60_000)).toEqual({
+      outcome: "replay",
+      response: { orderId: "o1" },
+    });
+  });
+
+  it("a second caller mid-flight sees inProgress, not started or replay", async () => {
+    const store = new InMemoryIdempotencyStore();
+    await store.begin("orders", "k1", "hash-a", 60_000);
+    expect(await store.begin("orders", "k1", "hash-a", 60_000)).toEqual({ outcome: "inProgress" });
+  });
+
+  it("the same key with a different body is a conflict, in-progress or completed", async () => {
+    const store = new InMemoryIdempotencyStore();
+    await store.begin("orders", "k1", "hash-a", 60_000);
+    expect(await store.begin("orders", "k1", "hash-b", 60_000)).toEqual({ outcome: "conflict" });
+
+    await store.complete("orders", "k1", "hash-a", { orderId: "o1" }, 60_000);
+    expect(await store.begin("orders", "k1", "hash-b", 60_000)).toEqual({ outcome: "conflict" });
+  });
+
+  it("scopes are independent — the same key in a different scope starts fresh", async () => {
+    const store = new InMemoryIdempotencyStore();
+    await store.begin("orders", "k1", "hash-a", 60_000);
+    expect(await store.begin("refunds", "k1", "hash-a", 60_000)).toEqual({ outcome: "started" });
+  });
+
+  it("an expired in_progress lock is reclaimable — recovers a crashed caller's key", async () => {
+    const clock = new FixedClock(new Date("2026-07-29T00:00:00Z"));
+    const store = new InMemoryIdempotencyStore({ clock });
+    await store.begin("orders", "k1", "hash-a", 1000); // caller "crashes", never completes
+
+    clock.advance(999);
+    expect(await store.begin("orders", "k1", "hash-a", 1000)).toEqual({ outcome: "inProgress" });
+    clock.advance(1);
+    expect(await store.begin("orders", "k1", "hash-a", 1000)).toEqual({ outcome: "started" });
+  });
+
+  it("an expired completed entry is no longer replayable — starts fresh, not replay", async () => {
+    const clock = new FixedClock(new Date("2026-07-29T00:00:00Z"));
+    const store = new InMemoryIdempotencyStore({ clock });
+    await store.begin("orders", "k1", "hash-a", 60_000);
+    await store.complete("orders", "k1", "hash-a", { orderId: "o1" }, 1000);
+
+    clock.advance(1001);
+    expect(await store.begin("orders", "k1", "hash-a", 60_000)).toEqual({ outcome: "started" });
+  });
+
+  it("complete() is a no-op once the lock has expired and been reclaimed by a newer attempt", async () => {
+    const clock = new FixedClock(new Date("2026-07-29T00:00:00Z"));
+    const store = new InMemoryIdempotencyStore({ clock });
+    await store.begin("orders", "k1", "hash-a", 1000); // attempt #1
+
+    clock.advance(1001); // attempt #1's lock expires, unreclaimed
+    await store.begin("orders", "k1", "hash-b", 60_000); // attempt #2 reclaims with a new body
+
+    // attempt #1's stale complete() must not clobber attempt #2's in-progress state
+    await store.complete("orders", "k1", "hash-a", { stale: true }, 60_000);
+    expect(await store.begin("orders", "k1", "hash-b", 60_000)).toEqual({ outcome: "inProgress" });
+  });
+
+  it("complete() is a no-op if called before begin() ever ran", async () => {
+    const store = new InMemoryIdempotencyStore();
+    await store.complete("orders", "k1", "hash-a", { orderId: "o1" }, 60_000);
+    expect(await store.begin("orders", "k1", "hash-a", 60_000)).toEqual({ outcome: "started" });
   });
 });
 

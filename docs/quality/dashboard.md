@@ -20,7 +20,11 @@
 > [rate-limiter.md](../../packages/platform/docs/rate-limiter.md);
 > T42 CachePort decision done (ADR-0018: no Postgres backend, Redis
 > deferred) — see
-> [ADR-0018](../adr/0018-cache-no-postgres-backend-redis-deferred.md)).
+> [ADR-0018](../adr/0018-cache-no-postgres-backend-redis-deferred.md);
+> **E03 now COMPLETE**: T43 Postgres IdempotencyStore adapter done
+> (ADR-0019 added the `IdempotencyStore` port to the kernel, a blueprint
+> prerequisite gap) — see
+> [idempotency-key-store.md](../../packages/platform/docs/idempotency-key-store.md)).
 
 ## Standing policy
 
@@ -45,7 +49,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 51 files / **358 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 71 integration) |
+| Test files / tests   | 51 files / **375 tests** (kernel 74 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 80 integration) |
 | Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |
@@ -55,7 +59,7 @@ for the first instance of this standard.
 
 | Metric                      | Value                                                                                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| ADRs accepted               | **18** (0001–0018)                                                                                                                           |
+| ADRs accepted               | **19** (0001–0019)                                                                                                                           |
 | Architecture fitness tests  | **Live in CI**: layer boundaries (lint zones + fixtures), import cycles, cross-package boundaries, manifest/ADR compliance, kernel zero-deps |
 | Public API stability        | Kernel runtime surface snapshot-gated; full type-level report at E19-T14                                                                     |
 | Kernel runtime dependencies | **0** (fitness-test-enforced)                                                                                                                |

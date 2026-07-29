@@ -51,3 +51,9 @@ export {
   PostgresRateLimiter,
   pruneRateLimitWindows,
 } from "../infrastructure/postgres-rate-limiter.js";
+
+export { ensureIdempotencyKeysSchema } from "../infrastructure/postgres-idempotency-store-schema.js";
+export {
+  PostgresIdempotencyStore,
+  pruneIdempotencyKeys,
+} from "../infrastructure/postgres-idempotency-store.js";

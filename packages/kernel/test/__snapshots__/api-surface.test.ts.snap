@@ -9,6 +9,7 @@ exports[`kernel public surface > runtime exports are intentional 1`] = `
   "FixedClock",
   "ForbiddenError",
   "InMemoryEventBus",
+  "InMemoryIdempotencyStore",
   "InMemoryLruCache",
   "InMemoryProcessedEventStore",
   "InMemoryRateLimiter",

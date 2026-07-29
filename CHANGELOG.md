@@ -443,6 +443,34 @@ ROLE` session T30's own tests used. 5 new unit/type tests + 3 new
   verifying empirically before writing production code. Full decision note:
   [docs/adr/0018-cache-no-postgres-backend-redis-deferred.md](docs/adr/0018-cache-no-postgres-backend-redis-deferred.md).
 
+- **E03-T43 Postgres `IdempotencyStore` adapter — E03 is now COMPLETE
+  (all of T23, T30, T31, T33, T40, T41, T42, T43 done).** New kernel port
+  first: `IdempotencyStore` (`begin`/`complete` lifecycle) plus
+  `InMemoryIdempotencyStore`, added to `@corestack/kernel` (ADR-0019) to
+  fill a blueprint gap — E04-T03 already lists `IdempotencyStore` alongside
+  `EventBus`/`Cache`/`RateLimiter`/`Encrypter`/`UnitOfWork` as a kernel port
+  needing a contract suite, but no E02 task had ever created it.
+  `PostgresIdempotencyStore` then implements that port against
+  `platform.idempotency_keys` (DB §3) exactly per the blueprint's
+  acceptance wording. **Two real bugs caught before shipping**, continuing
+  this epic's established pre-implementation-verification pattern (T30's
+  GUC finding, T41's lexicographic-comparison bug): (1) `begin`/`complete`
+  must never be nested inside the caller's use-case transaction — verified
+  with two real connections that a second connection's `INSERT ... ON
+CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
+  lock until the first commits, so nesting would make every losing
+  concurrent caller wait out the _winner's entire request_, not just its
+  lock-acquisition statement; (2) expiry comparisons must use the injected
+  `Clock`, never SQL `now()` — an early version compared `expires_at`
+  against Postgres's own `now()`, which under a `FixedClock`-based test is
+  almost always later than the simulated instant, making the reclaim guard
+  fire unconditionally (4 of 9 integration tests failed on first run before
+  the fix). 9 new real-Postgres integration tests, including the
+  blueprint's exact acceptance criterion proven with two genuinely separate
+  connections plus a 20-concurrent-caller race (kernel: 8 new unit tests,
+  74 total). Platform now at 191 unit + 80 integration. Full component
+  spec: [packages/platform/docs/idempotency-key-store.md](packages/platform/docs/idempotency-key-store.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

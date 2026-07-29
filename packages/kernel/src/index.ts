@@ -62,3 +62,6 @@ export { InMemoryUnitOfWork } from "./unit-of-work.js";
 
 export type { ProcessedEventStore } from "./processed-events.js";
 export { InMemoryProcessedEventStore, idempotentHandler } from "./processed-events.js";
+
+export type { IdempotencyBeginResult, IdempotencyStore } from "./idempotency-store.js";
+export { InMemoryIdempotencyStore } from "./idempotency-store.js";
