@@ -114,6 +114,16 @@ E04-T13. See
 [outbox-benchmark-methodology.md](architecture-benchmarks/outbox-benchmark-methodology.md)
 and [baselines/outbox/](architecture-benchmarks/baselines/outbox/).
 
+**Contract-suite adapters (E04):** first baseline captured 2026-07-29,
+same local instance — four scripts covering the newly-certified
+Postgres adapters (`PostgresRateLimiter.consume` 0.35ms mean,
+`PostgresIdempotencyStore.begin` 0.34ms, `PostgresProcessedEventStore
+.markProcessed` 0.30ms, `PostgresUnitOfWork.run` 0.74ms — the only one of
+the four opening a full transaction). Also **not CI-gated, no
+thresholds**, deferred to E04-T13. See
+[contract-suite-adapter-benchmark-methodology.md](performance/contract-suite-adapter-benchmark-methodology.md)
+and [docs/quality/performance/](performance/).
+
 ## Technical debt register (must be zero or justified)
 
 | Item                                                                                                                                                   | Justification                                                                                              | Retires at           |

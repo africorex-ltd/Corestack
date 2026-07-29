@@ -656,6 +656,22 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   text-based scanning, the same triage already applied to two of
   ADR-0021's five requested rules. Architecture fitness tests now at 31.
 
+- **Performance baselines for the four newly-certified Postgres
+  contract-suite adapters.** `packages/platform/bench/{rate-limiter-consume,
+  idempotency-store-begin,processed-event-store-mark,unit-of-work-run}.bench.ts`
+  measure one logical operation per timed call each, against real
+  Postgres, using the outbox subsystem's existing benchmark harness
+  (`writeBaseline` gained an optional `dir` parameter so these write to
+  `docs/quality/performance/` instead of the outbox baseline directory;
+  `BenchStats` gained `p99Ms`/`opsPerSecond`, both benchmark sets now
+  report all three). First baseline: `PostgresRateLimiter.consume`
+  0.35ms mean, `PostgresIdempotencyStore.begin` 0.34ms,
+  `PostgresProcessedEventStore.markProcessed` 0.30ms,
+  `PostgresUnitOfWork.run` 0.74ms (the only one opening a full
+  transaction). Not CI-gated, no thresholds — same posture as every
+  other benchmark in this repository, deferred to E04-T13. Full record:
+  [contract-suite-adapter-benchmark-methodology.md](docs/quality/performance/contract-suite-adapter-benchmark-methodology.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

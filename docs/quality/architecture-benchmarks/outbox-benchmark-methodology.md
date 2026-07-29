@@ -59,7 +59,10 @@ Each benchmark:
    measurement starts.
 4. Runs 50 (200 for `relay-dispatch`) timed iterations, recording
    wall-clock duration per iteration via `performance.now()`.
-5. Computes mean, p50, p95, min, and max across the timed iterations.
+5. Computes mean, p50, p95, p99, min, max, and `opsPerSecond` across the
+   timed iterations (`p99Ms`/`opsPerSecond` added when the E04 contract-
+   suite adapter benchmarks reused this harness — see
+   [contract-suite-adapter-benchmark-methodology.md](../performance/contract-suite-adapter-benchmark-methodology.md)).
 6. Writes the result as JSON to
    `docs/quality/architecture-benchmarks/baselines/outbox/<name>.json`
    (see [harness.ts](../../../packages/platform/bench/harness.ts)) and

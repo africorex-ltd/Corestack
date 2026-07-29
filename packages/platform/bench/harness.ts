@@ -20,8 +20,11 @@ export interface BenchStats {
   readonly name: string;
   readonly iterations: number;
   readonly meanMs: number;
+  /** `1000 / meanMs` — a single-call throughput estimate, meaningful only for benchmarks measuring one logical operation per timed call (not e.g. a fixed-size batch). */
+  readonly opsPerSecond: number;
   readonly p50Ms: number;
   readonly p95Ms: number;
+  readonly p99Ms: number;
   readonly minMs: number;
   readonly maxMs: number;
   readonly recordedAt: string;
@@ -66,30 +69,45 @@ export async function measure(
   }
 
   const sorted = [...timings].sort((a, b) => a - b);
+  const meanMs = timings.reduce((a, b) => a + b, 0) / timings.length;
   return {
     name,
     iterations,
-    meanMs: timings.reduce((a, b) => a + b, 0) / timings.length,
+    meanMs,
+    opsPerSecond: 1000 / meanMs,
     p50Ms: percentile(sorted, 50),
     p95Ms: percentile(sorted, 95),
+    p99Ms: percentile(sorted, 99),
     minMs: sorted[0] ?? 0,
     maxMs: sorted[sorted.length - 1] ?? 0,
     recordedAt: new Date().toISOString(),
   };
 }
 
-const BASELINE_DIR = fileURLToPath(
+const OUTBOX_BASELINE_DIR = fileURLToPath(
   new URL("../../../docs/quality/architecture-benchmarks/baselines/outbox/", import.meta.url),
 );
 
-/** Writes one benchmark's result as the current baseline and prints a one-line summary. */
-export function writeBaseline(stats: BenchStats): void {
-  mkdirSync(BASELINE_DIR, { recursive: true });
-  const path = join(BASELINE_DIR, `${stats.name}.json`);
+/**
+ * Writes one benchmark's result as the current baseline and prints a
+ * one-line summary. `dir` defaults to the outbox subsystem's existing
+ * baseline location for backward compatibility with the E03
+ * Infrastructure Consolidation benchmarks; pass an absolute path (e.g.
+ * `docs/quality/performance/`) for benchmarks outside that subsystem —
+ * see the contract-suite adapter benchmarks (E04) for an example.
+ */
+export function writeBaseline(stats: BenchStats, dir: string = OUTBOX_BASELINE_DIR): void {
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${stats.name}.json`);
   writeFileSync(path, `${JSON.stringify(stats, null, 2)}\n`);
   console.log(
     `[bench] ${stats.name}: mean=${stats.meanMs.toFixed(2)}ms p50=${stats.p50Ms.toFixed(2)}ms ` +
-      `p95=${stats.p95Ms.toFixed(2)}ms min=${stats.minMs.toFixed(2)}ms max=${stats.maxMs.toFixed(2)}ms ` +
-      `(n=${stats.iterations}) -> ${path}`,
+      `p95=${stats.p95Ms.toFixed(2)}ms p99=${stats.p99Ms.toFixed(2)}ms min=${stats.minMs.toFixed(2)}ms ` +
+      `max=${stats.maxMs.toFixed(2)}ms (n=${stats.iterations}) -> ${path}`,
   );
 }
+
+/** Absolute path to `docs/quality/performance/` for the E04 contract-suite adapter benchmarks. */
+export const PERFORMANCE_BASELINE_DIR = fileURLToPath(
+  new URL("../../../docs/quality/performance/", import.meta.url),
+);
