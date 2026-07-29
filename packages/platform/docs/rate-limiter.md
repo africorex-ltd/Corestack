@@ -125,17 +125,22 @@ adapter with no branching worth instrumenting beyond what
 
 ## Testing
 
-**5 real-Postgres integration tests**
-(`test/integration/rate-limiter.postgres.test.ts`): the first two mirror
-kernel's own `InMemoryRateLimiter` suite exactly (allow-up-to-limit-then-deny
-with a positive `retryAfterMs`; epoch-aligned window reset) — proving
-this adapter satisfies the identical behavioral contract the reference
-implementation does. A third proves the lexicographic-comparison
-regression is fixed (`cost = 9, limit = 10` allowed numerically) and that
-a request whose cost alone exceeds the limit never seeds a row. A fourth
-proves concurrent correctness (20 racing callers, limit 10, exactly 10/10
-split, stored count never exceeds 10). A fifth proves
-`pruneRateLimitWindows` deletes only rows older than its cutoff.
+**8 real-Postgres integration tests**
+(`test/integration/rate-limiter.postgres.test.ts`). Since E04-T01, the first
+5 come from `@corestack/kernel/testing`'s shared `RateLimiter` contract
+suite (`defineRateLimiterContractSuite`) run directly against this adapter
+— allow-up-to-limit-then-deny with a positive `retryAfterMs`, epoch-aligned
+window reset, multi-unit cost accounting, bucket independence, and
+cost-exceeds-limit denial — proving this adapter satisfies the identical
+behavioral contract kernel's own `InMemoryRateLimiter` proves, without
+hand-mirroring the test bodies (see
+[kernel's contract-suite-framework.md](../../kernel/docs/contract-suite-framework.md)).
+The 3 remaining tests are Postgres-specific, outside the portable contract:
+a request whose cost alone exceeds the limit never seeds a row for a fresh
+bucket (also the regression case for the lexicographic-comparison bug,
+`cost = 9, limit = 10` allowed numerically); concurrent correctness (20
+racing callers, limit 10, exactly 10/10 split, stored count never exceeds
+10); and `pruneRateLimitWindows` deleting only rows older than its cutoff.
 
 ## Design rationale
 

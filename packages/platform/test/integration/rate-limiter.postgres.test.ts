@@ -1,15 +1,18 @@
 /**
  * Real-Postgres integration tests for E03-T41's `PostgresRateLimiter`
- * (kernel's `RateLimiter` port). First mirrors the exact behavioral
- * contract kernel's own `InMemoryRateLimiter` suite already proves
- * (`packages/kernel/test/ports.test.ts`) — allow-up-to-limit-then-deny
- * with a positive `retryAfterMs`, and epoch-aligned window reset — then
- * proves the Postgres-specific angle no in-memory store can: concurrent
- * callers racing the same bucket's remaining quota never jointly
- * over-consume it, and explicit window pruning.
+ * (kernel's `RateLimiter` port). The shared `RateLimiter` contract suite
+ * (`@corestack/kernel/testing`, E04-T01) proves the same behavioral
+ * contract kernel's own `InMemoryRateLimiter` proves — allow-up-to-limit-
+ * then-deny with a positive `retryAfterMs`, epoch-aligned window reset,
+ * cost accounting, bucket independence — against this real adapter, no
+ * hand-mirrored duplicate needed. This file then proves the Postgres-
+ * specific angle no in-memory store can: concurrent callers racing the
+ * same bucket's remaining quota never jointly over-consume it, that a
+ * denied over-cost request seeds no row, and explicit window pruning.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { FixedClock } from "@corestack/kernel";
+import { defineRateLimiterContractSuite, type SuiteHarness } from "@corestack/kernel/testing";
 import type { Sql } from "postgres";
 
 import { ensureRateLimitsSchema } from "../../src/infrastructure/postgres-rate-limiter-schema.js";
@@ -36,36 +39,14 @@ beforeEach(async () => {
   await ensureRateLimitsSchema(sql);
 });
 
-describe("PostgresRateLimiter (E03-T41 integration)", () => {
-  const policy = { limit: 3, windowMs: 60_000 };
+const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
-  it("allows up to the limit then denies with retryAfter", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00.000Z"));
-    const limiter = new PostgresRateLimiter(sql, clock);
+// E04-T01: the same suite that proves kernel's InMemoryRateLimiter, proven
+// again here against the real adapter — no hand-mirrored duplicate.
+defineRateLimiterContractSuite(harness, (clock) => new PostgresRateLimiter(sql, clock));
 
-    expect((await limiter.consume("b", policy)).allowed).toBe(true);
-    expect((await limiter.consume("b", policy)).allowed).toBe(true);
-    const third = await limiter.consume("b", policy);
-    expect(third).toEqual({ allowed: true, limit: 3, remaining: 0, retryAfterMs: null });
-
-    const denied = await limiter.consume("b", policy);
-    expect(denied.allowed).toBe(false);
-    expect(denied.remaining).toBe(0);
-    expect(denied.retryAfterMs).toBeGreaterThan(0);
-    expect(denied.retryAfterMs).toBeLessThanOrEqual(60_000);
-  });
-
-  it("windows reset on epoch-aligned boundaries", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:59.000Z"));
-    const limiter = new PostgresRateLimiter(sql, clock);
-    await limiter.consume("b", policy, 3);
-    expect((await limiter.consume("b", policy)).allowed).toBe(false);
-
-    clock.advance(1000); // crosses the minute boundary
-    expect((await limiter.consume("b", policy)).allowed).toBe(true);
-  });
-
-  it("a single request whose cost exceeds the limit is denied without seeding an over-limit row", async () => {
+describe("PostgresRateLimiter (E03-T41 integration, Postgres-specific)", () => {
+  it("a request whose cost exceeds the limit seeds no row for that bucket", async () => {
     const clock = new FixedClock(new Date("2026-07-29T00:00:00.000Z"));
     const limiter = new PostgresRateLimiter(sql, clock);
 

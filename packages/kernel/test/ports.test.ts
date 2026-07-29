@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   CaptureLogger,
@@ -11,6 +11,13 @@ import {
   versionedKey,
   WebCryptoAesGcmEncrypter,
 } from "../src/index.js";
+import {
+  defineCacheContractSuite,
+  defineRateLimiterContractSuite,
+  type SuiteHarness,
+} from "../src/testing/index.js";
+
+const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
 describe("Logger", () => {
   it("CaptureLogger records entries with child fields merged into a shared sink", () => {
@@ -48,19 +55,7 @@ describe("Cache", () => {
     expect(versionedKey("entitlements", 7n, "org-1")).toBe("entitlements:v7:org-1");
   });
 
-  it("honors TTL deterministically", async () => {
-    const clock = new FixedClock(new Date("2026-07-28T00:00:00Z"));
-    const cache = new InMemoryLruCache({ clock });
-    await cache.set("k", { hello: true }, 1000);
-
-    expect(await cache.get("k")).toEqual({ hello: true });
-    clock.advance(999);
-    expect(await cache.get("k")).toEqual({ hello: true });
-    clock.advance(1);
-    expect(await cache.get("k")).toBeUndefined();
-  });
-
-  it("evicts least-recently-used beyond maxEntries", async () => {
+  it("evicts least-recently-used beyond maxEntries (InMemoryLruCache-specific capacity bound, not part of the portable Cache contract)", async () => {
     const clock = new FixedClock(new Date("2026-07-28T00:00:00Z"));
     const cache = new InMemoryLruCache({ maxEntries: 2, clock });
     await cache.set("a", 1, 60_000);
@@ -72,58 +67,16 @@ describe("Cache", () => {
     expect(await cache.get("b")).toBeUndefined();
     expect(await cache.get("c")).toBe(3);
   });
-
-  it("delete removes entries", async () => {
-    const cache = new InMemoryLruCache();
-    await cache.set("k", 1, 60_000);
-    await cache.delete("k");
-    expect(await cache.get("k")).toBeUndefined();
-  });
 });
 
-describe("RateLimiter", () => {
+// E04-T01 acceptance criterion: the kernel's own in-memory adapter passes
+// its port's contract suite through the shared framework.
+defineCacheContractSuite(harness, (clock) => new InMemoryLruCache({ clock }));
+
+defineRateLimiterContractSuite(harness, (clock) => new InMemoryRateLimiter({ clock }));
+
+describe("RateLimiter (InMemoryRateLimiter-specific)", () => {
   const policy = { limit: 3, windowMs: 60_000 };
-
-  it("allows up to the limit then denies with retryAfter", async () => {
-    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
-    const limiter = new InMemoryRateLimiter({ clock });
-
-    expect((await limiter.consume("b", policy)).allowed).toBe(true);
-    expect((await limiter.consume("b", policy)).allowed).toBe(true);
-    const third = await limiter.consume("b", policy);
-    expect(third).toEqual({ allowed: true, limit: 3, remaining: 0, retryAfterMs: null });
-
-    const denied = await limiter.consume("b", policy);
-    expect(denied.allowed).toBe(false);
-    expect(denied.remaining).toBe(0);
-    expect(denied.retryAfterMs).toBeGreaterThan(0);
-    expect(denied.retryAfterMs).toBeLessThanOrEqual(60_000);
-  });
-
-  it("windows reset on epoch-aligned boundaries", async () => {
-    const clock = new FixedClock(new Date("2026-07-28T00:00:59.000Z"));
-    const limiter = new InMemoryRateLimiter({ clock });
-    await limiter.consume("b", policy, 3);
-    expect((await limiter.consume("b", policy)).allowed).toBe(false);
-
-    clock.advance(1000); // crosses the minute boundary
-    expect((await limiter.consume("b", policy)).allowed).toBe(true);
-  });
-
-  it("cost consumes multiple units and never over-admits", async () => {
-    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
-    const limiter = new InMemoryRateLimiter({ clock });
-    expect((await limiter.consume("b", policy, 2)).remaining).toBe(1);
-    expect((await limiter.consume("b", policy, 2)).allowed).toBe(false);
-    expect((await limiter.consume("b", policy, 1)).allowed).toBe(true);
-  });
-
-  it("buckets are independent", async () => {
-    const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));
-    const limiter = new InMemoryRateLimiter({ clock });
-    await limiter.consume("a", policy, 3);
-    expect((await limiter.consume("b", policy)).allowed).toBe(true);
-  });
 
   it("AUD-05 regression: expired windows are pruned — the bucket map is bounded", async () => {
     const clock = new FixedClock(new Date("2026-07-28T00:00:00.000Z"));

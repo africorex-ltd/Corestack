@@ -910,11 +910,23 @@ Adopted as standing policy, effective immediately:
   keeps the pure/in-memory core import-clean of any specific vendor SDK.
 - **Keep examples production-realistic.** The golden-path module (Section 7) is built to the same rigor as shipped platform code — no shortcuts,
   because contributors will copy what they see.
-- **Keep security tests mandatory.** Every regression test in §4 was
-  verified to fail against an intentionally unsafe variant before being
-  finalized — this discipline is now the standard for any future
-  tenant-isolation-relevant test, not an exception made for this
-  certification pass.
+- **Keep security tests mandatory.** Not every regression test in §4 was
+  mutation-proven the same way. The two SECURITY tests (kernel and
+  Postgres `IdempotencyStore`, §4 rows tied to ADR-0020) and §4.2
+  (cross-tenant `UPDATE`) were run against a temporarily-reverted unsafe
+  implementation and confirmed to fail before the fix was restored. §4.1
+  was checked against an alternate RLS clause and found safe by
+  coincidence, not by failure — recorded as such rather than claimed as a
+  proof. §4.3–§4.5 rest on already-empirically-established Postgres
+  session/transaction semantics (§3) rather than a dedicated
+  fail-then-fix cycle of their own. §4.6 *is* the unsafe-variant
+  demonstration for its own risk class (a bare `SET` leaking context),
+  not a test proven against a separate broken version of itself. The
+  standard going forward: every new tenant-isolation test should be
+  mutation-proven where a distinct "unsafe" implementation actually
+  exists to revert to; where none does (the test instead documents an
+  already-verified platform behavior), say so explicitly rather than
+  implying uniform mutation-testing coverage.
 
 ---
 

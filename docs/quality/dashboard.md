@@ -35,7 +35,12 @@
 > and fixed a real cross-tenant vulnerability (ADR-0020); added
 > `GlobalRepository` + two architecture-fitness rules (ADR-0021); shipped
 > the golden-path `examples/acme-crm-module` and a mandatory contributor
-> safety guide).
+> safety guide). **E04-T01 contract-suite framework done** (2026-07-29):
+> `@corestack/kernel/testing` — see
+> [contract-suite-framework.md](../../packages/kernel/docs/contract-suite-framework.md).
+> Cache/RateLimiter suites proven against both kernel's in-memory adapters
+> and platform's real `PostgresRateLimiter`; zero added runtime
+> dependencies (type-only vitest import). Remaining ports move to E04-T03.
 
 ## Standing policy
 
@@ -60,8 +65,8 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 55 files / **403 tests** (kernel 76 · lint fixtures 15 · architecture fitness 26 · platform 191 unit + 88 integration · example module 3 unit + 4 integration) |
-| Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                                                            |
+| Test files / tests   | 55 files / **411 tests** (kernel 81 · lint fixtures 15 · architecture fitness 26 · platform 191 unit + 91 integration · example module 3 unit + 4 integration) |
+| Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
 | Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                                                                    |

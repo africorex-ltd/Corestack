@@ -495,6 +495,48 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   first. Kernel now at 74 tests; platform at 191 unit + 82 integration.
   Full analysis: [docs/security/tenant-isolation-certification.md](docs/security/tenant-isolation-certification.md).
 
+- **Tenant Isolation Certification — CERTIFIED WITH RESIDUAL RISKS.** Every
+  tenant-isolation mechanism the platform ships (context resolution,
+  org-scoped repositories, RLS, `PostgresUnitOfWork`, the outbox, the purge
+  protocol, `IdempotencyStore`) audited as one system against real
+  PostgreSQL 18. New: `GlobalRepository` marker interface + two
+  architecture-fitness rules (ADR-0021) — no repository may expose an
+  unscoped query method without implementing `GlobalRepository` and citing
+  an ADR; no SQL helper may touch a `platform.*` table outside an approved
+  adapter (a real false positive was caught and fixed while building this
+  rule — see ADR-0021 and
+  [tenant-isolation-certification.md §5](docs/security/tenant-isolation-certification.md#5-architecture-fitness-rules)).
+  New golden-path module `examples/acme-crm-module` (built to the same
+  rigor as shipped platform code — its own construction caught a real
+  Clean Architecture violation the moment the layer-boundary lint rule was
+  extended to cover `examples/*`). New mandatory contributor path:
+  [docs/security/how-to-build-a-tenant-safe-feature.md](docs/security/how-to-build-a-tenant-safe-feature.md).
+  New [security scorecard](docs/security/security-scorecard.md) (10
+  dimensions, range 5–8/10) and
+  [v0.1.0-alpha readiness review](docs/releases/v0.1.0-alpha-readiness.md).
+  4 residual risks ranked, the highest (R3) being that no real deployment
+  has ever connected to Postgres as the restricted `app`/`platform` roles —
+  proven correct in isolation, not yet proven live. Test count: 375 → 403.
+
+- **E04-T01 contract-suite framework:** `@corestack/kernel/testing` lets a
+  port's normative behavior be declared once and run against any
+  implementation. `defineCacheContractSuite`/`defineRateLimiterContractSuite`
+  cover the `Cache` and `RateLimiter` ports; both kernel's own in-memory
+  adapters (`InMemoryLruCache`, `InMemoryRateLimiter`) and platform's real
+  `PostgresRateLimiter` now pass the identical suite — the Postgres
+  integration test's two hand-mirrored duplicate cases were deleted in
+  favor of the shared suite, which also added three contract cases
+  (bucket independence, multi-unit cost, cost-exceeds-limit) it never had.
+  The framework itself adds zero runtime dependencies to the kernel: its
+  `SuiteHarness` types `describe`/`it`/`expect` via `import type` from
+  `vitest`, erased entirely at compile time (confirmed via the emitted
+  `dist/testing/harness.js`), so a caller supplies its own already-imported
+  test-runner primitives rather than the framework pulling in a test
+  runner as a dependency. Full design:
+  [packages/kernel/docs/contract-suite-framework.md](packages/kernel/docs/contract-suite-framework.md).
+  Remaining kernel ports (EventBus, Encrypter, UnitOfWork, IdempotencyStore)
+  are E04-T03's separate, larger task.
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

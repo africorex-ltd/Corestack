@@ -13,7 +13,7 @@
 | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Per-layer security audit (12 components)                               | Done — [certification §1](../../security/tenant-isolation-certification.md#1-per-layer-audit)                  |
 | Empirical PostgreSQL 18 fail-closed findings                           | Done — [certification §3](../../security/tenant-isolation-certification.md#3-empirical-findings-postgresql-18) |
-| Regression test matrix (14 scenarios)                                  | Done — 6 new tests across 3 existing suites, each proven against an unsafe variant                             |
+| Regression test matrix (14 scenarios)                                  | Done — 6 new tests across 3 existing suites; mutation-proven where a distinct unsafe variant existed, documented against established Postgres semantics otherwise (certification §4/§6)  |
 | Architecture fitness rules (`GlobalRepository`, platform-table access) | Done — ADR-0021, 2 rules automated + 3 downgraded to reviewed convention with a stated reason                  |
 | Contributor safety guide                                               | Done — `docs/security/how-to-build-a-tenant-safe-feature.md`                                                   |
 | Golden-path example module                                             | Done — `examples/acme-crm-module`, 7 integration/unit tests, real end-to-end proof                             |
