@@ -15,7 +15,9 @@
 > T33 purge protocol framework done — see
 > [purge-protocol.md](../../packages/platform/docs/purge-protocol.md);
 > T40 Postgres UnitOfWork done (ADR-0017: Drizzle deferred) — see
-> [unit-of-work.md](../../packages/platform/docs/unit-of-work.md)).
+> [unit-of-work.md](../../packages/platform/docs/unit-of-work.md);
+> T41 Postgres RateLimiter done — see
+> [rate-limiter.md](../../packages/platform/docs/rate-limiter.md)).
 
 ## Standing policy
 
@@ -40,7 +42,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 50 files / **353 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 66 integration) |
+| Test files / tests   | 51 files / **358 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 71 integration) |
 | Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |

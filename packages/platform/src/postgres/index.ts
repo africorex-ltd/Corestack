@@ -45,3 +45,9 @@ export { runOrgScopedQuery } from "../infrastructure/postgres-org-scoped-reposit
 
 export type { PostgresTransactionContext } from "../infrastructure/postgres-unit-of-work.js";
 export { PostgresUnitOfWork } from "../infrastructure/postgres-unit-of-work.js";
+
+export { ensureRateLimitsSchema } from "../infrastructure/postgres-rate-limiter-schema.js";
+export {
+  PostgresRateLimiter,
+  pruneRateLimitWindows,
+} from "../infrastructure/postgres-rate-limiter.js";

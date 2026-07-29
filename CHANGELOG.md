@@ -406,6 +406,28 @@ ROLE` session T30's own tests used. 5 new unit/type tests + 3 new
   platform now at 191 unit + 66 integration. Full component spec:
   [packages/platform/docs/unit-of-work.md](packages/platform/docs/unit-of-work.md).
 
+- **E03-T41 Postgres `RateLimiter` adapter:** `PostgresRateLimiter`
+  implements the kernel's fixed-window `RateLimiter` port against
+  `platform.rate_limits` (DB §3) — a single atomic UPSERT per `consume()`
+  call, never a read-then-write pair, so concurrent callers racing the
+  same bucket's remaining quota can never jointly over-consume it
+  (verified with 20 concurrent callers against a limit of 10: exactly
+  10/10 allowed/denied, stored count never exceeds the limit). **Real bug
+  caught and fixed before shipping:** an early version of the UPSERT
+  compared `cost`/`limit` as untyped bind parameters, which Postgres
+  defaulted to `text` with no other type context — `10 <= 5` evaluated
+  `true` (lexicographic string comparison, `'1' < '5'`), silently
+  allowing a request whose cost alone exceeded the limit. Fixed with
+  explicit `::integer` casts on every comparison; covered by a regression
+  test using `cost = 9, limit = 10` (numerically allowed, would be denied
+  as strings). `pruneRateLimitWindows` is an explicit, separately-scheduled
+  maintenance operation (matching E03-T03's partition-maintenance
+  posture) — `platform.rate_limits` has no `window_end` column, so the
+  caller supplies the cutoff. 5 new real-Postgres integration tests, the
+  first two mirroring kernel's own `InMemoryRateLimiter` suite exactly
+  (platform now at 191 unit + 71 integration). Full component spec:
+  [packages/platform/docs/rate-limiter.md](packages/platform/docs/rate-limiter.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
