@@ -308,6 +308,52 @@ and adding 10 shared-suite tests).
 **All seven contract suites from the founder's T03–T09 directive are now
 complete.** See the certification matrix for the full per-port status.
 
+## Repo-wide duplicate-test sweep (E04 Consolidation, Section 3) — 2026-07-29
+
+Beyond the file-by-file conversions logged above (each already removed its
+own duplicates as it went), this sweep specifically searched files that
+were **never touched** during the T03–T09 conversions, to check for
+behavioral tests now covered by a shared suite that nobody had reason to
+notice yet. Checked:
+
+- `packages/platform/test/application/outbox-relay.test.ts` — all 9 tests
+  assert `OutboxRelay`'s own checkpoint/lag/redelivery/multi-consumer
+  orchestration semantics, a different mechanism from `EventBus`
+  (ADR-0009). No overlap with `defineEventBusContractSuite`.
+- `packages/platform/test/application/create-core-stack.test.ts` — the one
+  test using `InMemoryEventBus` (`"subscribes every module's eventHandlers
+  to the shared bus"`) proves `createCoreStack`'s own wiring, not `EventBus`
+  dispatch semantics (no ordering/wildcard/version-filter assertions
+  present). No overlap.
+- `packages/platform/test/application/graceful-shutdown.test.ts` — the one
+  `CaptureLogger` assertion checks `entries[].message` content for a
+  warning string; it does not touch redacted fields and is unaffected by
+  ADR-0022. No overlap with `defineLoggerContractSuite`.
+- `packages/platform/test/application/purge-protocol.test.ts` — uses
+  `InMemoryProcessedEventStore` as a dependency to prove
+  `registerPurgeHandler`'s own namespacing, validation, and idempotent-
+  replay wiring. This *exercises* the store's dedup behavior but tests
+  `purge-protocol.ts`'s logic, not the store's contract — different subject
+  under test, kept.
+- `examples/acme-crm-module/test/**` (all three files) — domain validation,
+  application-layer input rejection, and one golden-path integration file
+  proving the module's own RLS/atomicity/idempotent-consumer/purge wiring
+  end-to-end against real Postgres. None re-assert a kernel port's own
+  contract in isolation; all are legitimately module- or integration-level.
+- A repo-wide grep for `redact`/`SENSITIVE_LOG_KEYS` outside the logger
+  suite found exactly one other hit
+  (`packages/platform/test/application/config-validation.test.ts`), which
+  redacts a *config validation error message*, an unrelated concern to
+  `Logger`'s field redaction. No overlap.
+
+**Result: zero additional true duplicates found.** Every duplicate that
+existed was already removed during the T03–T09 conversions themselves (see
+each suite's log entry above for its own tests-removed count); no lines
+were removed in this sweep. Reporting zero here is the honest measured
+result of having looked, not a skipped step — manufacturing a removal to
+populate a "tests removed" number would be worse than reporting zero with
+evidence.
+
 ## Fitness rules (Section 13)
 
 `packages/architecture-tests/test/contract-suite-adapter-matrix.test.mjs`
