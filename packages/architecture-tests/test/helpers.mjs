@@ -11,7 +11,7 @@ export const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 /** All package dirs (with package.json) under packages/, apps/, tooling/. */
 export function workspacePackages() {
   const found = [];
-  for (const group of ["packages", "apps", "tooling"]) {
+  for (const group of ["packages", "apps", "tooling", "examples"]) {
     const base = join(repoRoot, group);
     if (!existsSync(base)) continue;
     for (const entry of readdirSync(base, { withFileTypes: true })) {

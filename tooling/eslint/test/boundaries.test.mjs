@@ -49,6 +49,14 @@ describe("layer boundaries", () => {
     expect(ruleIds(messages)).toContain("no-restricted-imports");
   });
 
+  it("the same boundary rule covers examples/*/src (golden-path modules are linted as strictly as shipped packages)", async () => {
+    const messages = await lintAt(
+      "examples/fixture-module/src/application/use-case.ts",
+      'import { Repo } from "../infrastructure/postgres/repo.js";\nexport const x = Repo;\n',
+    );
+    expect(ruleIds(messages)).toContain("no-restricted-imports");
+  });
+
   it("interface may not import infrastructure", async () => {
     const messages = await lintAt(
       "packages/fixture/src/interface/http/routes.ts",

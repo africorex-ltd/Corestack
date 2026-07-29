@@ -41,7 +41,7 @@ export default tseslint.config(
     // is a deny-list heuristic scoped to logger-shaped calls; it will produce
     // occasional false positives near logging code — that is the intended
     // trade (rename the local, don't weaken the rule). See README for scope.
-    files: ["packages/*/src/**"],
+    files: ["packages/*/src/**", "examples/*/src/**"],
     rules: {
       "no-console": "error",
       "no-restricted-syntax": [
@@ -57,7 +57,7 @@ export default tseslint.config(
   },
   {
     // domain: innermost layer. Imports kernel types and itself only.
-    files: ["packages/*/src/domain/**"],
+    files: ["packages/*/src/domain/**", "examples/*/src/domain/**"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -75,7 +75,7 @@ export default tseslint.config(
   },
   {
     // application: may import domain + kernel. Never adapters or transport.
-    files: ["packages/*/src/application/**"],
+    files: ["packages/*/src/application/**", "examples/*/src/application/**"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -94,7 +94,7 @@ export default tseslint.config(
   },
   {
     // interface: translates transport → use cases; never touches adapters directly.
-    files: ["packages/*/src/interface/**"],
+    files: ["packages/*/src/interface/**", "examples/*/src/interface/**"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -115,7 +115,7 @@ export default tseslint.config(
     // (e.g. a package's dual-mode database bootstrap used by both test/
     // and bench/) but has the same justification: it never ships in a
     // published package (excluded from every tsconfig.build.json).
-    files: ["**/test/**", "**/test-support/**", "tooling/**", "apps/**"],
+    files: ["**/test/**", "**/test-support/**", "tooling/**", "apps/**", "examples/**"],
     languageOptions: {
       globals: { ...globals.node },
     },

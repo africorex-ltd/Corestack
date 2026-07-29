@@ -1,0 +1,25 @@
+{
+  "name": "@corestack/example-acme-crm-module",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Golden-path example module: every tenant-isolation touchpoint (context resolution, UnitOfWork, org-scoped repository, RLS migration, event publishing, idempotent consumer, purge handler, health) wired end to end, built to the same rigor as shipped platform code.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --exclude \"**/test/integration/**\"",
+    "test:integration": "vitest run test/integration --testTimeout 60000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@corestack/kernel": "workspace:*",
+    "@corestack/platform": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@corestack/tsconfig": "workspace:*",
+    "@types/node": "^20.19.9",
+    "postgres": "^3.4.5",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
