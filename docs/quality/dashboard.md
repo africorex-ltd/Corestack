@@ -74,7 +74,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 56 files / **453 tests** (kernel 110 · lint fixtures 15 · architecture fitness 31 · platform 194 unit + 96 integration · example module 3 unit + 4 integration) |
+| Test files / tests   | 56 files / **454 tests** (kernel 110 · lint fixtures 15 · architecture fitness 31 · platform 194 unit + 97 integration · example module 3 unit + 4 integration) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
