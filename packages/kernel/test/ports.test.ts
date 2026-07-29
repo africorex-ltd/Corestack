@@ -14,6 +14,7 @@ import {
 import {
   defineCacheContractSuite,
   defineEncrypterContractSuite,
+  defineIdempotencyStoreContractSuite,
   defineLoggerContractSuite,
   defineRateLimiterContractSuite,
   type SuiteHarness,
@@ -102,145 +103,8 @@ describe("RateLimiter (InMemoryRateLimiter-specific)", () => {
   });
 });
 
-describe("IdempotencyStore", () => {
-  const ORG_A = "org-a";
-  const ORG_B = "org-b";
-
-  it("a fresh (org, scope, key) starts, then completes and replays with the same body", async () => {
-    const store = new InMemoryIdempotencyStore();
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { orderId: "o1" }, 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "replay",
-      response: { orderId: "o1" },
-    });
-  });
-
-  it("a second caller mid-flight sees inProgress, not started or replay", async () => {
-    const store = new InMemoryIdempotencyStore();
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "inProgress",
-    });
-  });
-
-  it("the same key with a different body is a conflict, in-progress or completed", async () => {
-    const store = new InMemoryIdempotencyStore();
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000)).toEqual({
-      outcome: "conflict",
-    });
-
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { orderId: "o1" }, 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000)).toEqual({
-      outcome: "conflict",
-    });
-  });
-
-  it("scopes are independent — the same key in a different scope starts fresh", async () => {
-    const store = new InMemoryIdempotencyStore();
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000);
-    expect(await store.begin(ORG_A, "refunds", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-  });
-
-  it("SECURITY: two organizations presenting the identical (scope, key, requestHash) never share a lock or a replayed response", async () => {
-    const store = new InMemoryIdempotencyStore();
-
-    // Org A completes a request with a client-supplied Idempotency-Key
-    // that happens to collide with what Org B will independently choose.
-    expect(
-      await store.begin(ORG_A, "orders:create", "same-client-key", "same-body-hash", 60_000),
-    ).toEqual({
-      outcome: "started",
-    });
-    await store.complete(
-      ORG_A,
-      "orders:create",
-      "same-client-key",
-      "same-body-hash",
-      { orderId: "org-a-secret-order" },
-      60_000,
-    );
-
-    // Org B, presenting the identical (scope, key, requestHash), must get
-    // its own fresh lock — never Org A's stored response.
-    const orgBResult = await store.begin(
-      ORG_B,
-      "orders:create",
-      "same-client-key",
-      "same-body-hash",
-      60_000,
-    );
-    expect(orgBResult).toEqual({ outcome: "started" });
-
-    // Confirm Org A's own replay is unaffected by Org B's activity.
-    expect(
-      await store.begin(ORG_A, "orders:create", "same-client-key", "same-body-hash", 60_000),
-    ).toEqual({ outcome: "replay", response: { orderId: "org-a-secret-order" } });
-  });
-
-  it("an expired in_progress lock is reclaimable — recovers a crashed caller's key", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00Z"));
-    const store = new InMemoryIdempotencyStore({ clock });
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 1000); // caller "crashes", never completes
-
-    clock.advance(999);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 1000)).toEqual({
-      outcome: "inProgress",
-    });
-    clock.advance(1);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 1000)).toEqual({
-      outcome: "started",
-    });
-  });
-
-  it("an expired completed entry is no longer replayable — starts fresh, not replay", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00Z"));
-    const store = new InMemoryIdempotencyStore({ clock });
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000);
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { orderId: "o1" }, 1000);
-
-    clock.advance(1001);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-  });
-
-  it("complete() is a no-op once the lock has expired and been reclaimed by a newer attempt", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00Z"));
-    const store = new InMemoryIdempotencyStore({ clock });
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 1000); // attempt #1
-
-    clock.advance(1001); // attempt #1's lock expires, unreclaimed
-    await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000); // attempt #2 reclaims with a new body
-
-    // attempt #1's stale complete() must not clobber attempt #2's in-progress state
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { stale: true }, 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000)).toEqual({
-      outcome: "inProgress",
-    });
-  });
-
-  it("complete() is a no-op if called before begin() ever ran", async () => {
-    const store = new InMemoryIdempotencyStore();
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { orderId: "o1" }, 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-  });
-
-  it("null organizationId (platform-scoped) is independent from any real organization", async () => {
-    const store = new InMemoryIdempotencyStore();
-    await store.begin(null, "orders", "k1", "hash-a", 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-  });
+describe("InMemoryIdempotencyStore via the shared IdempotencyStore contract suite", () => {
+  defineIdempotencyStoreContractSuite(harness, (clock) => new InMemoryIdempotencyStore({ clock }));
 });
 
 describe("WebCryptoAesGcmEncrypter via the shared Encrypter contract suite", () => {

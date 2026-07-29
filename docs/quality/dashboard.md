@@ -40,12 +40,16 @@
 > [contract-suite-framework.md](../../packages/kernel/docs/contract-suite-framework.md).
 > Cache/RateLimiter suites proven against both kernel's in-memory adapters
 > and platform's real `PostgresRateLimiter`; zero added runtime
-> dependencies (type-only vitest import). **E04-T03 Logger contract suite
-> done** (2026-07-29, ADR-0022): found and fixed a real gap — no adapter
-> redacted `SENSITIVE_LOG_KEYS` at runtime, and `Error` values silently
-> serialized to `{}`. See
-> [contract-governance.md](../testing/contract-governance.md) for the
-> full E04 executable-contracts effort and task-numbering note.
+> dependencies (type-only vitest import). **All 7 founder-directed
+> contract suites complete** (2026-07-29, T03–T09: Logger, EventBus,
+> UnitOfWork, Encrypter, ProcessedEventStore, Health-check snapshots,
+> IdempotencyStore) — two real bugs found and fixed along the way
+> (ADR-0022 Logger runtime redaction/error serialization; a UUID-vs-
+> readable-id bug caught by the ProcessedEventStore suite itself before
+> shipping). E04-T02 (Testcontainers) remains an explicit external-
+> environment blocker (no Docker), not attempted. Full record:
+> [contract-governance.md](../testing/contract-governance.md),
+> [adapter-certification-matrix.md](../testing/adapter-certification-matrix.md).
 
 ## Standing policy
 
@@ -70,7 +74,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 55 files / **447 tests** (kernel 110 · lint fixtures 15 · architecture fitness 26 · platform 194 unit + 95 integration · example module 3 unit + 4 integration) |
+| Test files / tests   | 55 files / **448 tests** (kernel 110 · lint fixtures 15 · architecture fitness 26 · platform 194 unit + 96 integration · example module 3 unit + 4 integration) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

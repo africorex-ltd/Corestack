@@ -628,6 +628,20 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   in depth; these exist purely to catch an accidental shape change.
   Platform unit tests now at 22 (health-readiness file).
 
+- **E04-T09 IdempotencyStore contract suite — the last of the seven
+  founder-directed suites.** `defineIdempotencyStoreContractSuite` proves
+  both `InMemoryIdempotencyStore` and `PostgresIdempotencyStore` against
+  the full begin/complete/replay/conflict lifecycle, including the
+  ADR-0020 cross-tenant SECURITY regression (relocated into the shared
+  suite verbatim, not duplicated — every existing kernel test was already
+  pure clock-driven state-machine logic, the cleanest suite in this
+  batch). Kept adapter-specific: the blueprint's own 2-connection
+  concurrency acceptance criterion and a 20-concurrent-caller race. Kernel
+  unchanged at 110 tests (pure relocation); platform integration 95 → 96.
+  See [docs/testing/contract-governance.md](docs/testing/contract-governance.md)
+  and [docs/testing/adapter-certification-matrix.md](docs/testing/adapter-certification-matrix.md)
+  for the full record of all seven suites.
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

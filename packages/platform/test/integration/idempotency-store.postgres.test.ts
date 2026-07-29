@@ -1,17 +1,21 @@
 /**
  * Real-Postgres integration tests for E03-T43's `PostgresIdempotencyStore`
  * (kernel's `IdempotencyStore` port, added this task to fill a blueprint
- * gap — see ADR-0019). Mirrors the exact begin/complete/replay/conflict
- * contract already proven in-memory
- * (`packages/kernel/test/ports.test.ts`), then proves the blueprint's own
- * acceptance criterion: "concurrent same-key second caller blocks/conflicts
- * correctly (tested with 2 connections)". Also proves the tenant-isolation
- * certification finding (ADR-0020): two organizations presenting the
- * identical `(scope, key, requestHash)` never share a lock or a replayed
- * response, against the real Postgres adapter, not just the in-memory one.
+ * gap — see ADR-0019). The shared `IdempotencyStore` contract suite
+ * (`@corestack/kernel/testing`, E04) proves the full begin/complete/
+ * replay/conflict contract — including the tenant-isolation certification
+ * finding (ADR-0020: two organizations presenting the identical (scope,
+ * key, requestHash) never share a lock or a replayed response) — against
+ * this real adapter, no hand-mirrored duplicate needed. This file then
+ * proves the blueprint's own acceptance criterion no in-memory store can:
+ * "concurrent same-key second caller blocks/conflicts correctly (tested
+ * with 2 connections)".
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { FixedClock } from "@corestack/kernel";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  defineIdempotencyStoreContractSuite,
+  type SuiteHarness,
+} from "@corestack/kernel/testing";
 import postgres, { type Sql } from "postgres";
 
 import { ensureIdempotencyKeysSchema } from "../../src/infrastructure/postgres-idempotency-store-schema.js";
@@ -22,7 +26,6 @@ import {
 import { createTestDatabase, type TestDatabase } from "../../test-support/test-database.js";
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
-const ORG_B = "22222222-2222-2222-2222-222222222222";
 
 let db: TestDatabase;
 let sql: Sql;
@@ -41,134 +44,14 @@ beforeEach(async () => {
   await ensureIdempotencyKeysSchema(sql);
 });
 
-describe("PostgresIdempotencyStore (E03-T43 integration)", () => {
-  it("starts fresh, then completes and replays with the same body", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00.000Z"));
-    const store = new PostgresIdempotencyStore(sql, clock);
+const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-    await store.complete(
-      ORG_A,
-      "orders",
-      "k1",
-      "hash-a",
-      { orderId: "o1", nested: { a: 1 } },
-      60_000,
-    );
+// E04-T09: the same suite that proves kernel's InMemoryIdempotencyStore
+// (including the ADR-0020 cross-tenant SECURITY test), proven again here
+// against the real adapter — no hand-mirrored duplicate.
+defineIdempotencyStoreContractSuite(harness, (clock) => new PostgresIdempotencyStore(sql, clock));
 
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "replay",
-      response: { orderId: "o1", nested: { a: 1 } },
-    });
-  });
-
-  it("the same key with a different body is a conflict", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00.000Z"));
-    const store = new PostgresIdempotencyStore(sql, clock);
-
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000)).toEqual({
-      outcome: "conflict",
-    });
-
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { orderId: "o1" }, 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000)).toEqual({
-      outcome: "conflict",
-    });
-  });
-
-  it("SECURITY: two organizations presenting the identical (scope, key, requestHash) never share a lock or a replayed response", async () => {
-    const store = new PostgresIdempotencyStore(sql);
-
-    expect(
-      await store.begin(ORG_A, "orders:create", "same-client-key", "same-body-hash", 60_000),
-    ).toEqual({ outcome: "started" });
-    await store.complete(
-      ORG_A,
-      "orders:create",
-      "same-client-key",
-      "same-body-hash",
-      { orderId: "org-a-secret-order" },
-      60_000,
-    );
-
-    // Org B must get its own fresh lock for the identical (scope, key,
-    // requestHash) — never Org A's stored response.
-    expect(
-      await store.begin(ORG_B, "orders:create", "same-client-key", "same-body-hash", 60_000),
-    ).toEqual({ outcome: "started" });
-
-    // Org A's own replay must be unaffected.
-    expect(
-      await store.begin(ORG_A, "orders:create", "same-client-key", "same-body-hash", 60_000),
-    ).toEqual({ outcome: "replay", response: { orderId: "org-a-secret-order" } });
-
-    // Exactly two physical rows exist — one per organization, not one shared row.
-    const rows = await sql`SELECT scope FROM platform.idempotency_keys`;
-    expect(rows).toHaveLength(2);
-  });
-
-  it("an expired in_progress lock is reclaimable — recovers a crashed caller's key", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00.000Z"));
-    const store = new PostgresIdempotencyStore(sql, clock);
-
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 1000); // caller "crashes", never completes
-    clock.advance(999);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 1000)).toEqual({
-      outcome: "inProgress",
-    });
-
-    clock.advance(1);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 1000)).toEqual({
-      outcome: "started",
-    });
-  });
-
-  it("an expired completed entry is no longer replayable — starts fresh", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00.000Z"));
-    const store = new PostgresIdempotencyStore(sql, clock);
-
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000);
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { orderId: "o1" }, 1000);
-
-    clock.advance(1001);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-  });
-
-  it("complete() is a no-op once the lock has expired and been reclaimed by a newer attempt", async () => {
-    const clock = new FixedClock(new Date("2026-07-29T00:00:00.000Z"));
-    const store = new PostgresIdempotencyStore(sql, clock);
-
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 1000); // attempt #1
-    clock.advance(1001); // attempt #1's lock expires, unreclaimed
-    await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000); // attempt #2 reclaims with a new body
-
-    await store.complete(ORG_A, "orders", "k1", "hash-a", { stale: true }, 60_000); // attempt #1's stale complete
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-b", 60_000)).toEqual({
-      outcome: "inProgress",
-    });
-  });
-
-  it("scopes are independent — the same key in a different scope starts fresh", async () => {
-    const store = new PostgresIdempotencyStore(sql);
-    await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000);
-    expect(await store.begin(ORG_A, "refunds", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-  });
-
-  it("null organizationId (platform-scoped) is independent from any real organization", async () => {
-    const store = new PostgresIdempotencyStore(sql);
-    await store.begin(null, "orders", "k1", "hash-a", 60_000);
-    expect(await store.begin(ORG_A, "orders", "k1", "hash-a", 60_000)).toEqual({
-      outcome: "started",
-    });
-  });
-
+describe("PostgresIdempotencyStore (E03-T43 integration, Postgres-specific)", () => {
   it("acceptance criterion: a concurrent same-key second caller on a genuinely separate connection blocks then classifies correctly, never double-acquiring the lock", async () => {
     const connA = postgres(db.connectionString, { max: 1, onnotice: () => {} });
     const connB = postgres(db.connectionString, { max: 1, onnotice: () => {} });

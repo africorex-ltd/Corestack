@@ -32,3 +32,7 @@ export {
   defineProcessedEventStoreContractSuite,
   type ProcessedEventStoreContractFactory,
 } from "./processed-event-store-contract.js";
+export {
+  defineIdempotencyStoreContractSuite,
+  type IdempotencyStoreContractFactory,
+} from "./idempotency-store-contract.js";

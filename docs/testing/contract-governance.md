@@ -284,3 +284,26 @@ depth — these three exist purely to catch an accidental shape change
 Recorded in the certification matrix as **not applicable**, not
 `pending`/`blocked` — there is no missing adapter to build here. Platform
 unit: 19 → 22.
+
+### IdempotencyStore (T09) — 2026-07-29
+
+The cleanest suite in this batch: every existing kernel test (10, including
+the ADR-0020 cross-tenant SECURITY regression) was already pure begin/
+complete state-machine logic against a clock-injectable adapter, so the
+entire block relocated into the shared suite verbatim — no scope
+narrowing needed, unlike every other port in this effort. Both adapters
+accept a `Clock` constructor option, so the factory follows the same
+`(clock: FixedClock) => T` shape as `Cache`/`RateLimiter`.
+
+Kept adapter-specific: the blueprint's own 2-connection concurrency
+acceptance criterion and a 20-concurrent-caller race (both meaningful only
+against real shared storage, the `Map`-backed in-memory adapter can't
+race with itself). `pruneIdempotencyKeys`'s own test (unrelated to the
+port's `begin`/`complete` contract) was untouched.
+
+Kernel: 110 tests (net zero change — a pure relocation, not new coverage).
+Platform integration: 95 → 96 (net +1 after removing 9 duplicated tests
+and adding 10 shared-suite tests).
+
+**All seven contract suites from the founder's T03–T09 directive are now
+complete.** See the certification matrix for the full per-port status.
