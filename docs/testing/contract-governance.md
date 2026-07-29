@@ -183,3 +183,34 @@ through `defineEventBusContractSuite` (that would register a
 permanently-failing test in CI); instead one targeted assertion proves the
 fixture actually produces the wrong order, demonstrating the shared suite's
 ordering assertion has real teeth without shipping a red test.
+
+### UnitOfWork (T05) — 2026-07-29
+
+Scoped to exactly what the port doc makes normative across **both**
+adapters: `run()` returns the work callback's result, staged events are
+dispatched only after commit and in stage order, and staged events (plus
+any other writes) are discarded entirely when `work` throws.
+
+**Found and documented, not fixed:** the port doc's "nesting is not
+supported" clause is only mechanically enforced by `PostgresUnitOfWork`
+(via `TransactionSql` having no `.begin()` — a real shared connection to
+protect). `InMemoryUnitOfWork` has no equivalent shared resource, so nested
+calls cause no corruption there and aren't separately enforced — no
+existing test ever claimed otherwise for the in-memory adapter. Unlike the
+Logger redaction gap, this isn't a defect: manufacturing a same-instance
+reentrancy guard on the in-memory adapter would catch only same-instance
+nesting (not the general pattern the doc warns about), for no real safety
+payoff, the same "a rule with no real teeth is worse than no rule"
+reasoning as ADR-0021's downgraded fitness rules. Clarified in
+`unit-of-work.ts`'s doc comment; nesting-rejection stays a
+`PostgresUnitOfWork`-specific integration test.
+
+**The highest-value result in this suite:** `drainDispatched()` for
+`PostgresUnitOfWork` runs a real `OutboxRelay.pollOnce()` against a real
+`PostgresOutboxRelayStore`, proving the full `UnitOfWork` → `platform.outbox`
+→ relay pipeline end-to-end for the first time in this codebase — every
+prior test proved each stage in isolation. Kernel: 101 → 103 tests.
+Platform integration: unchanged count after removing one now-duplicate
+test and adding three shared-suite tests (net swap, not additive) —
+91 → 93 once the shared suite's three tests are counted alongside the six
+remaining Postgres-specific ones.

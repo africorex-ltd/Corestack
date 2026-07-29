@@ -570,6 +570,24 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   suite's ordering assertion has real teeth, without registering a
   permanently-failing test in CI. Kernel now at 101 tests.
 
+- **E04-T05 UnitOfWork contract suite:** `defineUnitOfWorkContractSuite`
+  proves both `InMemoryUnitOfWork` and `PostgresUnitOfWork` against what
+  the port doc makes normative: `run()` returns the work callback's
+  result, staged events dispatch only after commit and in stage order,
+  and staged events plus any other writes are discarded entirely when
+  `work` throws. For `PostgresUnitOfWork`, `drainDispatched()` runs a real
+  `OutboxRelay.pollOnce()` against a real `PostgresOutboxRelayStore` —
+  proving the full `UnitOfWork` → `platform.outbox` → relay pipeline
+  end-to-end for the first time in this codebase; every prior test proved
+  each stage in isolation. Found (not fixed — documented as intentional):
+  the port doc's "nesting not supported" clause is mechanically enforced
+  only by `PostgresUnitOfWork` (a real shared connection to protect);
+  `InMemoryUnitOfWork` has no equivalent resource, so nesting causes no
+  corruption there and isn't separately enforced — clarified in the port's
+  doc comment rather than adding a no-payoff reentrancy guard. Kernel now
+  at 103 tests; platform integration at 93 (net +2 after removing one
+  now-duplicate test and adding three shared-suite tests).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

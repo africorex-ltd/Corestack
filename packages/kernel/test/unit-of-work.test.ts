@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createContext,
@@ -11,6 +11,9 @@ import {
   SequentialIdGenerator,
   type DomainEvent,
 } from "../src/index.js";
+import { defineUnitOfWorkContractSuite, type SuiteHarness } from "../src/testing/index.js";
+
+const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
 function makeEvent(idPrefix = "evt-"): DomainEvent {
   return createEvent(
@@ -23,21 +26,40 @@ function makeEvent(idPrefix = "evt-"): DomainEvent {
   );
 }
 
-describe("InMemoryUnitOfWork", () => {
-  it("dispatches staged events only after work resolves", async () => {
+describe("InMemoryUnitOfWork via the shared UnitOfWork contract suite", () => {
+  defineUnitOfWorkContractSuite(
+    harness,
+    () => {
+      const bus = new InMemoryEventBus();
+      let delivered: DomainEvent[] = [];
+      bus.subscribe({ consumer: "drain", event: "*", handler: (e) => void delivered.push(e) });
+      return {
+        uow: new InMemoryUnitOfWork(bus),
+        drainDispatched: async () => {
+          const batch = delivered;
+          delivered = [];
+          return batch;
+        },
+      };
+    },
+    (idSuffix) => makeEvent(idSuffix),
+  );
+});
+
+describe("InMemoryUnitOfWork (adapter-specific)", () => {
+  it("nothing is dispatched while work is still running — only after run() resolves", async () => {
     const bus = new InMemoryEventBus();
     const delivered: string[] = [];
     bus.subscribe({ consumer: "c", event: "*", handler: (e) => void delivered.push(e.id) });
     const uow = new InMemoryUnitOfWork(bus);
 
-    const result = await uow.run(async (tx) => {
+    await uow.run(async (tx) => {
       tx.publish(makeEvent("a-"));
       expect(delivered).toEqual([]); // nothing dispatched mid-transaction
       tx.publish(makeEvent("b-"));
       return "done";
     });
 
-    expect(result).toBe("done");
     expect(delivered).toEqual(["a-1", "b-1"]);
   });
 
@@ -66,21 +88,6 @@ describe("InMemoryUnitOfWork", () => {
     expect(result).toBe("committed"); // the use case succeeded
     expect(observed).toHaveLength(1); // the failure was observed, not thrown
     expect((observed[0] as [unknown, number])[0]).toBeInstanceOf(AggregateError);
-  });
-
-  it("discards staged events when work throws", async () => {
-    const bus = new InMemoryEventBus();
-    const delivered: string[] = [];
-    bus.subscribe({ consumer: "c", event: "*", handler: (e) => void delivered.push(e.id) });
-    const uow = new InMemoryUnitOfWork(bus);
-
-    await expect(
-      uow.run(async (tx) => {
-        tx.publish(makeEvent());
-        throw new Error("rollback");
-      }),
-    ).rejects.toThrow("rollback");
-    expect(delivered).toEqual([]);
   });
 });
 

@@ -13,6 +13,12 @@
  *   are an observability concern (relay retries, dead-letters), never a
  *   use-case error. Implementations must isolate them.
  * - Nesting is not supported (a use case is the transaction boundary).
+ *   Connection-backed adapters must reject a nested `run()` mechanically
+ *   (there is a real shared resource — the open transaction/connection —
+ *   to protect); the in-memory reference adapter has no such resource, so
+ *   nesting two independent instances causes no corruption and isn't
+ *   separately enforced there. Nesting is still not a supported usage
+ *   pattern regardless of adapter.
  */
 
 import type { EventBus } from "./event-bus.js";

@@ -19,3 +19,8 @@ export {
   defineEventBusContractSuite,
   type EventBusContractFactory,
 } from "./event-bus-contract.js";
+export {
+  defineUnitOfWorkContractSuite,
+  type UnitOfWorkContractAdapter,
+  type UnitOfWorkContractFactory,
+} from "./unit-of-work-contract.js";

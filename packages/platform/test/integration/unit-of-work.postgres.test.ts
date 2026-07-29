@@ -13,11 +13,20 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createContext, createEvent, FixedClock, UuidGenerator } from "@corestack/kernel";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  createContext,
+  createEvent,
+  FixedClock,
+  UuidGenerator,
+  type DomainEvent,
+} from "@corestack/kernel";
+import { defineUnitOfWorkContractSuite, type SuiteHarness } from "@corestack/kernel/testing";
 import type { Sql } from "postgres";
 
+import { OutboxRelay } from "../../src/application/outbox-relay.js";
 import { ensureOutboxSchema } from "../../src/infrastructure/postgres-outbox-schema.js";
+import { PostgresOutboxRelayStore } from "../../src/infrastructure/postgres-outbox-relay-store.js";
 import {
   PostgresUnitOfWork,
   type PostgresTransactionContext,
@@ -54,13 +63,37 @@ beforeEach(async () => {
   await sql.unsafe(`CREATE TABLE widgets (id uuid PRIMARY KEY)`);
 });
 
-describe("PostgresUnitOfWork (E03-T40 integration)", () => {
-  it("returns the work callback's result", async () => {
-    const uow = new PostgresUnitOfWork(sql);
-    const result = await uow.run(async () => "done");
-    expect(result).toBe("done");
-  });
+const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
+describe("PostgresUnitOfWork via the shared UnitOfWork contract suite", () => {
+  // drainDispatched runs a real OutboxRelay once per call against the same
+  // durable consumer checkpoint — proving the full UnitOfWork -> outbox ->
+  // relay pipeline, not just that a row landed in the table.
+  defineUnitOfWorkContractSuite(
+    harness,
+    () => {
+      const store = new PostgresOutboxRelayStore(sql);
+      return {
+        uow: new PostgresUnitOfWork(sql),
+        drainDispatched: async () => {
+          const delivered: DomainEvent[] = [];
+          const relay = new OutboxRelay({
+            store,
+            subscriptions: [
+              { consumer: "uow-contract-suite", event: "*", handler: (e) => void delivered.push(e) },
+            ],
+            pollIntervalMs: 1000,
+          });
+          await relay.pollOnce();
+          return delivered;
+        },
+      };
+    },
+    (idSuffix) => makeEvent({ marker: idSuffix }),
+  );
+});
+
+describe("PostgresUnitOfWork (E03-T40 integration, Postgres-specific)", () => {
   it("commits staged events into platform.outbox atomically with the work's own writes", async () => {
     const widgetId = randomUUID();
     const event = makeEvent({ widgetId });
