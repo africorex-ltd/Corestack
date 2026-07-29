@@ -17,6 +17,26 @@
  * `begin()` is one immediately-committing statement here, that block is
  * bounded by the winner's single INSERT/UPDATE — near-instant.
  *
+ * **`organizationId` is folded into the physical `scope` value stored in
+ * `platform.idempotency_keys`, never left to caller convention.** The
+ * tenant-isolation certification pass found that a first version of this
+ * port keyed purely on `(scope, key)` — since `key` is a client-supplied
+ * `Idempotency-Key` header value, two different organizations presenting
+ * an identical `(scope, key)` pair would `replay` each other's stored
+ * response: a genuine cross-tenant data-disclosure path. Rather than
+ * changing DB §3's approved schema (which would need its own ADR and a
+ * migration), the kernel port's `organizationId` parameter is composed
+ * into the physical `scope` column value here, inside the adapter, as
+ * `JSON.stringify([organizationId, scope])` before any SQL touches the row.
+ * (A NUL-byte-separated string was tried first and rejected empirically —
+ * Postgres `text` columns reject the NUL byte outright, "invalid byte
+ * sequence for encoding \"UTF8\": 0x00" — so the composite uses JSON
+ * encoding instead, which has no separator-collision question to answer.)
+ * Callers can't bypass this by mis-naming their own `scope` string, because
+ * they never see or construct the physical key — they only ever pass their
+ * own logical `scope` (e.g. `"orders:create"`) and their own
+ * `organizationId` as separate parameters.
+ *
  * The `begin` UPSERT's `WHERE` guard treats an expired row (whichever
  * status it's in) as absent: `ON CONFLICT ... DO UPDATE ... WHERE
  * expires_at <= $now` overwrites it as a fresh `in_progress` lock,
@@ -66,6 +86,20 @@ interface IdempotencyRow {
   response_snapshot: unknown;
 }
 
+/**
+ * JSON-encodes the `(organizationId, scope)` tuple rather than joining with
+ * a separator character: verified empirically that Postgres `text` columns
+ * reject the NUL byte outright (`invalid byte sequence for encoding "UTF8":
+ * 0x00"`), which is what the kernel's in-memory `entryKey` safely uses as a
+ * separator since it never leaves a JS `Map` key. `JSON.stringify` gives an
+ * unambiguous, fully printable encoding with no separator-collision
+ * question to answer (a scope containing the literal separator can't be
+ * confused with a boundary), at the cost of a few extra bytes per row.
+ */
+function physicalScope(organizationId: string | null, scope: string): string {
+  return JSON.stringify([organizationId, scope]);
+}
+
 export class PostgresIdempotencyStore implements IdempotencyStore {
   readonly #sql: Sql;
   readonly #clock: Clock;
@@ -76,6 +110,7 @@ export class PostgresIdempotencyStore implements IdempotencyStore {
   }
 
   async begin(
+    organizationId: string | null,
     scope: string,
     key: string,
     requestHash: string,
@@ -83,10 +118,11 @@ export class PostgresIdempotencyStore implements IdempotencyStore {
   ): Promise<IdempotencyBeginResult> {
     const now = this.#clock.now();
     const expiresAt = new Date(now.getTime() + ttlMs);
+    const dbScope = physicalScope(organizationId, scope);
 
     const rows = await this.#sql<IdempotencyRow[]>`
       INSERT INTO platform.idempotency_keys (scope, key, request_hash, status, response_snapshot, expires_at)
-      VALUES (${scope}, ${key}, ${requestHash}, 'in_progress', NULL, ${expiresAt})
+      VALUES (${dbScope}, ${key}, ${requestHash}, 'in_progress', NULL, ${expiresAt})
       ON CONFLICT (scope, key) DO UPDATE
         SET request_hash = EXCLUDED.request_hash,
             status = 'in_progress',
@@ -103,7 +139,7 @@ export class PostgresIdempotencyStore implements IdempotencyStore {
     const existing = await this.#sql<IdempotencyRow[]>`
       SELECT request_hash, status, response_snapshot
       FROM platform.idempotency_keys
-      WHERE scope = ${scope} AND key = ${key}
+      WHERE scope = ${dbScope} AND key = ${key}
     `;
     const row = existing[0];
     if (row === undefined) {
@@ -124,6 +160,7 @@ export class PostgresIdempotencyStore implements IdempotencyStore {
   }
 
   async complete(
+    organizationId: string | null,
     scope: string,
     key: string,
     requestHash: string,
@@ -132,11 +169,12 @@ export class PostgresIdempotencyStore implements IdempotencyStore {
   ): Promise<void> {
     const now = this.#clock.now();
     const expiresAt = new Date(now.getTime() + ttlMs);
+    const dbScope = physicalScope(organizationId, scope);
 
     await this.#sql`
       UPDATE platform.idempotency_keys
       SET status = 'completed', response_snapshot = ${this.#sql.json(response as JSONValue)}, expires_at = ${expiresAt}
-      WHERE scope = ${scope} AND key = ${key}
+      WHERE scope = ${dbScope} AND key = ${key}
         AND status = 'in_progress' AND request_hash = ${requestHash} AND expires_at > ${now}
     `;
   }

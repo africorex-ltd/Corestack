@@ -5,7 +5,10 @@
 - **ADR references:** ADR-0004 (Postgres behind ports), ADR-0010
   (`./postgres` subpath), ADR-0019 (`IdempotencyStore` added to the kernel —
   a prerequisite this task needed and the blueprint's own E04-T03 already
-  assumed existed)
+  assumed existed), ADR-0020 (`organizationId` made a mandatory port
+  parameter after the tenant-isolation certification pass found a
+  cross-tenant replay gap in the originally-shipped `(scope, key)`-only
+  design — see [tenant-isolation-certification.md](../../../docs/security/tenant-isolation-certification.md))
 - **Design docs:** [Architecture §26](../../docs/architecture/ARCHITECTURE.md)
   (request-level idempotency for mutating REST endpoints), [Database §3](../../docs/architecture/DATABASE.md)
   (`platform.idempotency_keys` exact schema)
@@ -18,7 +21,10 @@
 `Idempotency-Key`-bearing mutating requests: acquire a lock for a genuinely
 new attempt, replay a completed attempt's stored response unchanged, and
 reject a same-key request whose body hash differs (conflict) or whose twin
-is still running (in progress).
+is still running (in progress). `organizationId` is a mandatory, leading
+parameter on every call (ADR-0020) — `null` only for genuinely
+platform-scoped operations — so tenant isolation for this store is
+structural, not a caller convention.
 
 **Public surface:**
 
@@ -30,12 +36,15 @@ is still running (in progress).
 
 ## The begin/complete lifecycle
 
-`begin(scope, key, requestHash, ttlMs)` is a single UPSERT — never a
-read-then-write pair:
+`begin(organizationId, scope, key, requestHash, ttlMs)` is a single
+UPSERT — never a read-then-write pair. `organizationId` and `scope` are
+composed into a single physical `dbScope` value
+(`JSON.stringify([organizationId, scope])`, see Finding 3 below) before
+touching SQL:
 
 ```sql
 INSERT INTO platform.idempotency_keys (scope, key, request_hash, status, response_snapshot, expires_at)
-VALUES ($scope, $key, $requestHash, 'in_progress', NULL, $expiresAt)
+VALUES ($dbScope, $key, $requestHash, 'in_progress', NULL, $expiresAt)
 ON CONFLICT (scope, key) DO UPDATE
   SET request_hash = EXCLUDED.request_hash,
       status = 'in_progress',
@@ -46,22 +55,22 @@ RETURNING request_hash, status, response_snapshot
 ```
 
 A row is returned exactly when this call acquired the lock — either no
-entry existed for `(scope, key)`, or the existing one had already expired
-(whichever status it was in) and this call reclaimed it as a fresh
-`in_progress` lock. Zero rows means a live entry already exists; a
+entry existed for `(dbScope, key)`, or the existing one had already
+expired (whichever status it was in) and this call reclaimed it as a
+fresh `in_progress` lock. Zero rows means a live entry already exists; a
 follow-up `SELECT` (not decision-critical, purely for classification)
 distinguishes the three losing outcomes: `conflict` (different
 `requestHash`), `replay` (completed, same `requestHash` — returns the
 stored `response_snapshot`), or `inProgress` (same `requestHash`, still
 running).
 
-`complete(scope, key, requestHash, response, ttlMs)` is a single guarded
-`UPDATE`:
+`complete(organizationId, scope, key, requestHash, response, ttlMs)` is a
+single guarded `UPDATE`, using the identical `dbScope` composition:
 
 ```sql
 UPDATE platform.idempotency_keys
 SET status = 'completed', response_snapshot = $response, expires_at = $newExpiresAt
-WHERE scope = $scope AND key = $key
+WHERE scope = $dbScope AND key = $key
   AND status = 'in_progress' AND request_hash = $requestHash AND expires_at > $now
 ```
 
@@ -70,7 +79,7 @@ not yet expired — already completed, or expired and reclaimed by a newer
 attempt — the `WHERE` clause matches nothing and the call is a silent
 no-op, identical to the kernel's `InMemoryIdempotencyStore`.
 
-## Two real findings caught before shipping
+## Three real findings caught before shipping
 
 **Finding 1 — `begin`/`complete` must never be nested in the caller's
 use-case transaction.** Verified empirically against PG18 with two real
@@ -104,6 +113,27 @@ Fixed by binding `this.#clock.now()` as an explicit parameter on both
 sides of every expiry comparison, so `expires_at` and the comparison
 instant always come from the same time source — whichever `Clock` the
 caller injects.
+
+**Finding 3 (security) — the original `(scope, key)`-only design allowed
+cross-tenant response replay; and the fix's first attempt broke on
+Postgres.** Found during a dedicated tenant-isolation certification pass,
+after this component had already shipped: with no `organizationId` in the
+key, two different organizations presenting an identical `(scope, key,
+requestHash)` — entirely plausible, since `key` is a client-supplied
+`Idempotency-Key` header value — would classify the second organization's
+`begin()` call as `replay` and return the _first organization's stored
+response_. Verified as a failing test against the as-shipped code (see
+ADR-0020). Fixed by making `organizationId` a mandatory port parameter and
+composing it into the physical Postgres key. The first fix attempt used a
+NUL-byte-separated string (`${organizationId}\0${scope}`) — this works
+fine as a JS `Map` key (the kernel's in-memory reference still uses it)
+but broke immediately against real Postgres: `invalid byte sequence for
+encoding "UTF8": 0x00"` — Postgres `text` columns reject the NUL byte
+outright. Switched to `JSON.stringify([organizationId, scope])`, which has
+no separator-collision question to answer and is valid UTF-8. Both the
+original vulnerability and the NUL-byte failure were caught by actually
+running the code against real Postgres before finalizing the fix, not by
+inspection.
 
 ## Failure modes
 
@@ -143,6 +173,16 @@ as every other platform component).
 
 ## Security considerations
 
+**Tenant isolation is structural, not conventional (ADR-0020).**
+`organizationId` is a mandatory port parameter; both `begin` and
+`complete` fold it into the physical storage key inside the adapter, so a
+caller can never accidentally share a lock or a replayed response across
+organizations by choosing a colliding `(scope, key)` pair — which a
+malicious or merely careless client can trivially do, since `key` is a
+client-supplied `Idempotency-Key` header value. See Finding 3 above and
+[tenant-isolation-certification.md](../../../docs/security/tenant-isolation-certification.md)
+for the full analysis of the gap this closed.
+
 `scope` and `key` are application-supplied (e.g. `scope="orders:create"`,
 `key` from the client's `Idempotency-Key` header) and passed directly as
 bind parameters — no string interpolation, no injection surface.
@@ -159,18 +199,24 @@ exposes to the caller.
 
 ## Testing
 
-**9 real-Postgres integration tests**
+**11 real-Postgres integration tests**
 (`test/integration/idempotency-store.postgres.test.ts`): the happy path
 (start → complete → replay with the same body); conflict on a different
-body, both while in-progress and after completion; expired-lock reclaim
-and expired-completion-no-longer-replayable; `complete()` as a no-op
-against an already-reclaimed lock; scope independence; the blueprint's own
+body, both while in-progress and after completion; **a dedicated SECURITY
+test proving two organizations presenting the identical `(scope, key,
+requestHash)` never share a lock or a replayed response** (verified to
+fail against the pre-ADR-0020 implementation before being finalized);
+`null`-organizationId (platform-scoped) independence from any real
+organization; expired-lock reclaim and
+expired-completion-no-longer-replayable; `complete()` as a no-op against
+an already-reclaimed lock; scope independence; the blueprint's own
 acceptance criterion verified with two genuinely separate connections
 racing the same key; a 20-concurrent-caller race producing exactly one
 `started`; and `pruneIdempotencyKeys` deleting only entries expired as of
-a given cutoff. The kernel's own 8 unit tests
+a given cutoff. The kernel's own 10 unit tests
 (`packages/kernel/test/ports.test.ts`) prove the identical behavioral
-contract against `InMemoryIdempotencyStore`.
+contract — including the same cross-tenant SECURITY case — against
+`InMemoryIdempotencyStore`.
 
 ## Design rationale
 

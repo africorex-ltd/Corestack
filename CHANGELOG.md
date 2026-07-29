@@ -471,6 +471,30 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   74 total). Platform now at 191 unit + 80 integration. Full component
   spec: [packages/platform/docs/idempotency-key-store.md](packages/platform/docs/idempotency-key-store.md).
 
+- **SECURITY (ADR-0020): `IdempotencyStore.begin`/`complete` now require
+  `organizationId`, closing a cross-tenant response-replay gap found during
+  a Tenant Isolation Certification review.** The as-shipped T43 port keyed
+  purely on `(scope, key)` — since `key` is a client-supplied
+  `Idempotency-Key` header value, two different organizations presenting
+  an identical `(scope, key, requestHash)` could cause the second
+  organization's `begin()` call to `replay` the _first organization's
+  stored response_. Verified as a failing test against the pre-fix code
+  before finalizing the fix (both in-memory and Postgres). `organizationId`
+  is now a mandatory, leading parameter on both methods, folded into each
+  implementation's internal keying scheme so callers can't bypass it by
+  mis-naming their own `scope` string. No `platform.idempotency_keys`
+  schema change — the Postgres adapter composes the physical `scope`
+  column value as `JSON.stringify([organizationId, scope])`, chosen after
+  a first attempt (`${organizationId}\0${scope}`, which works fine as a JS
+  `Map` key) failed against real Postgres: `text` columns reject the NUL
+  byte outright (`invalid byte sequence for encoding "UTF8": 0x00"`). No
+  real caller existed yet for this port (pre-1.0, no REST binding built),
+  so this was caught before any production exposure. 2 new tests each in
+  the kernel (10 total for `IdempotencyStore`) and the Postgres integration
+  suite (11 total), all proven to fail against the org-blind implementation
+  first. Kernel now at 74 tests; platform at 191 unit + 82 integration.
+  Full analysis: [docs/security/tenant-isolation-certification.md](docs/security/tenant-isolation-certification.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
