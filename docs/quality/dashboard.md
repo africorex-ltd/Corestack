@@ -13,7 +13,9 @@
 > T31 org-scoped repository base done — see
 > [org-scoped-repository.md](../../packages/platform/docs/org-scoped-repository.md);
 > T33 purge protocol framework done — see
-> [purge-protocol.md](../../packages/platform/docs/purge-protocol.md)).
+> [purge-protocol.md](../../packages/platform/docs/purge-protocol.md);
+> T40 Postgres UnitOfWork done (ADR-0017: Drizzle deferred) — see
+> [unit-of-work.md](../../packages/platform/docs/unit-of-work.md)).
 
 ## Standing policy
 
@@ -38,7 +40,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 49 files / **347 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 60 integration) |
+| Test files / tests   | 50 files / **353 tests** (kernel 66 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 66 integration) |
 | Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |
@@ -48,7 +50,7 @@ for the first instance of this standard.
 
 | Metric                      | Value                                                                                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| ADRs accepted               | **16** (0001–0016)                                                                                                                           |
+| ADRs accepted               | **17** (0001–0017)                                                                                                                           |
 | Architecture fitness tests  | **Live in CI**: layer boundaries (lint zones + fixtures), import cycles, cross-package boundaries, manifest/ADR compliance, kernel zero-deps |
 | Public API stability        | Kernel runtime surface snapshot-gated; full type-level report at E19-T14                                                                     |
 | Kernel runtime dependencies | **0** (fitness-test-enforced)                                                                                                                |

@@ -62,7 +62,8 @@ performance budget, security considerations, and observability scoping
 | RLS / tenant-isolation harness                               | ✅ E03-T30     | `buildTenantIsolationDdl`, `ensureTenancyRoles`/`withOrgContext` (`./postgres`) — see [component spec](docs/tenant-isolation.md)                                         |
 | Org-scoped repository base utilities                         | ✅ E03-T31     | `OrgScopedContext`, `requireOrgScoped`, `runOrgScopedQuery` (`./postgres`) — see [component spec](docs/org-scoped-repository.md)                                         |
 | Purge protocol framework                                     | ✅ E03-T33     | `registerPurgeHandler`, `PurgeHandler`, `ORGANIZATION_PURGE_REQUESTED_EVENT` — see [component spec](docs/purge-protocol.md)                                              |
-| Shared Postgres adapter base                                 | 📋 E03-T40–T43 | —                                                                                                                                                                        |
+| Postgres `UnitOfWork` (transaction + connection management)  | ✅ E03-T40     | `PostgresUnitOfWork`, `PostgresTransactionContext` (`./postgres`) — see [component spec](docs/unit-of-work.md); ADR-0017 defers Drizzle to the first module repository   |
+| Shared Postgres adapter base (remaining)                     | 📋 E03-T41–T43 | —                                                                                                                                                                        |
 
 ## Example usage (migration loader)
 
@@ -266,7 +267,7 @@ for (const moduleName of ["tenancy", "auth"]) {
 
 ```bash
 pnpm --filter @corestack/platform test                # 191 tests, no database required
-pnpm --filter @corestack/platform test:integration     # +60 tests, real Postgres — see below
+pnpm --filter @corestack/platform test:integration     # +66 tests, real Postgres — see below
 pnpm --filter @corestack/platform typecheck
 ```
 
@@ -349,7 +350,7 @@ _(Governance §11.3 — summarized into the Engineering Health Report at epic ex
 
 | Dimension       | Assessment                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Testability     | High — 191 unit tests (no database) + 60 real-Postgres integration tests across the shipped capabilities   |
+| Testability     | High — 191 unit tests (no database) + 66 real-Postgres integration tests across the shipped capabilities   |
 | Maintainability | High — one capability, one clear layering, no cross-cutting state                                          |
 | Complexity      | Low — pure functions + one small adapter; no retry/timeout machinery added without a matching failure mode |
 | Documentation   | Complete for what exists (component spec + README); grows per task                                         |

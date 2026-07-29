@@ -378,6 +378,34 @@ ROLE` session T30's own tests used. 5 new unit/type tests + 3 new
   integration). Full component spec:
   [packages/platform/docs/purge-protocol.md](packages/platform/docs/purge-protocol.md).
 
+- **ADR-0017 + E03-T40 Postgres `UnitOfWork`:** `PostgresUnitOfWork`
+  implements the kernel's `UnitOfWork` port (ADR-0009) against real
+  Postgres — one transaction per `run()` call, staged events flushed
+  atomically into `platform.outbox` (E03-T11's `createOutboxStaging`)
+  before commit, `app.current_org` set for the transaction's duration when
+  constructed with an organization id. Unlike the in-memory reference
+  implementation, it never dispatches to an `EventBus` directly — that's
+  the outbox relay's job (E03-T12), asynchronously, later — which is also
+  why "consumer failures never fail the producer" (AUD-03) holds trivially
+  here. New ADR-0017 records that this task does **not** add `drizzle-orm`
+  despite the blueprint's "Drizzle base setup" title: ADR-0004's Drizzle
+  decision is triggered by the first real module repository adapter
+  (E05+), not a transaction-boundary component with no schema to query —
+  adding it now with nothing to consume it would be exactly the "unused
+  flexibility is a liability" pattern this project's own principles
+  reject. Kernel's `TransactionContext` (`publish` only) gives no way for
+  a use case's own repository calls to reach the open transaction, so the
+  concrete adapter adds `PostgresTransactionContext` (`sql: TransactionSql`)
+  as an additive extension — the same class of change as E03-T23's
+  optional `countBacklog`. Documents the transaction-ownership rule this
+  now requires: use `ctx.sql` for repository calls inside a `UnitOfWork.run()`;
+  use `withOrgContext`/`runOrgScopedQuery` (E03-T30/T31) only outside one,
+  since neither `TransactionSql` nor a pooled `Sql` supports nesting a
+  second `.begin()`. 6 new real-Postgres integration tests (no pure unit
+  tests — this adapter has no logic that isn't transaction orchestration);
+  platform now at 191 unit + 66 integration. Full component spec:
+  [packages/platform/docs/unit-of-work.md](packages/platform/docs/unit-of-work.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
