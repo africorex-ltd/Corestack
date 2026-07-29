@@ -118,6 +118,8 @@ export { buildTenantIsolationDdl } from "./domain/tenant-policy.js";
 export type { OrgScopedContext } from "./application/org-scoped-context.js";
 export { requireOrgScoped } from "./application/org-scoped-context.js";
 
+export type { GlobalRepository } from "./application/global-repository.js";
+
 export type { PurgeHandler } from "./application/purge-protocol.js";
 export {
   ORGANIZATION_PURGE_REQUESTED_EVENT,

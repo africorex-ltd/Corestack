@@ -16,7 +16,7 @@
  * per-role credentials).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Sql } from "postgres";
+import postgres, { type Sql } from "postgres";
 
 import { buildTenantIsolationDdl } from "../../src/domain/tenant-policy.js";
 import { ensureTenancyRoles } from "../../src/infrastructure/postgres-tenancy-roles.js";
@@ -118,6 +118,84 @@ describe("tenant isolation RLS policy (E03-T30 integration)", () => {
     // documents that distinction rather than asserting isolation for a role
     // that Postgres deliberately never restricts.
     expect(rows.map((r) => r.note).sort()).toEqual(["org-a-widget", "org-b-widget"]);
+  });
+
+  it("SECURITY MATRIX §4.1: a malformed (non-UUID) org context fails closed, never silently matching or excluding as if it were valid", async () => {
+    await expect(
+      withRole(sql, APP_ROLE, async (tx) => {
+        await tx`SELECT set_config('app.current_org', 'not-a-uuid', true)`;
+        return tx`SELECT note FROM tenant_fixture.widgets`;
+      }),
+    ).rejects.toThrow(/invalid input syntax/);
+  });
+
+  it("SECURITY MATRIX §4.2: a cross-tenant UPDATE attempt affects zero rows, never mutates another tenant's row", async () => {
+    const [orgBRow] = await sql<
+      { id: string }[]
+    >`SELECT id FROM tenant_fixture.widgets WHERE organization_id = ${ORG_B}::uuid`;
+    if (orgBRow === undefined) throw new Error("fixture setup invariant violated");
+
+    await sql.unsafe(`GRANT UPDATE ON tenant_fixture.widgets TO ${APP_ROLE}`);
+
+    const updated = await withRole(sql, APP_ROLE, async (tx) => {
+      await tx`SELECT set_config('app.current_org', ${ORG_A}, true)`;
+      return tx`UPDATE tenant_fixture.widgets SET note = 'tampered' WHERE id = ${orgBRow.id}::uuid`;
+    });
+    expect(updated.count).toBe(0);
+
+    const [stillOrgB] = await sql<
+      { note: string }[]
+    >`SELECT note FROM tenant_fixture.widgets WHERE id = ${orgBRow.id}::uuid`;
+    expect(stillOrgB?.note).toBe("org-b-widget");
+  });
+
+  it("SECURITY MATRIX §4.3: a rolled-back transaction leaves no residual org context for the next transaction on the same connection", async () => {
+    // A dedicated single-connection client — the normal pool doesn't
+    // guarantee the same physical connection across two separate calls,
+    // and this test specifically proves behavior *on one reused connection*.
+    const single = postgres(db.connectionString, { max: 1, onnotice: () => {} });
+    try {
+      await expect(
+        single.begin(async (tx) => {
+          await tx`SELECT set_config('app.current_org', ${ORG_A}, true)`;
+          throw new Error("simulated use-case failure");
+        }),
+      ).rejects.toThrow("simulated use-case failure");
+
+      // Same connection, no withOrgContext call this time — must fail
+      // exactly like a virgin/empty-GUC connection (§3.2), not silently
+      // inherit org A's rolled-back setting.
+      await expect(
+        single.begin(async (tx) => {
+          await tx.unsafe(`SET LOCAL ROLE ${APP_ROLE}`);
+          return tx`SELECT note FROM tenant_fixture.widgets`;
+        }),
+      ).rejects.toThrow(/unrecognized configuration parameter|invalid input syntax/);
+    } finally {
+      await single.end();
+    }
+  });
+
+  it("SECURITY MATRIX §4.6: a manual session-scoped SET (not set_config(..., true)) leaks org context into the next transaction — this is exactly why withOrgContext never uses a bare SET", async () => {
+    const single = postgres(db.connectionString, { max: 1, onnotice: () => {} });
+    try {
+      // A bare SET (not wrapped in set_config's transaction-scoped form) is
+      // session-scoped: it survives past the transaction that set it.
+      await single.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE ${APP_ROLE}`);
+        await tx.unsafe(`SET app.current_org = '${ORG_A}'`);
+      });
+
+      // A *new* transaction on the same connection, with no context call of
+      // its own, still sees org A's setting — the leak this test documents.
+      const leaked = await single.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE ${APP_ROLE}`);
+        return tx<{ note: string }[]>`SELECT note FROM tenant_fixture.widgets`;
+      });
+      expect(leaked.map((r) => r.note)).toEqual(["org-a-widget"]);
+    } finally {
+      await single.end();
+    }
   });
 });
 

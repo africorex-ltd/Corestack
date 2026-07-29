@@ -18,7 +18,10 @@ import { createContext, createEvent, FixedClock, UuidGenerator } from "@corestac
 import type { Sql } from "postgres";
 
 import { ensureOutboxSchema } from "../../src/infrastructure/postgres-outbox-schema.js";
-import { PostgresUnitOfWork } from "../../src/infrastructure/postgres-unit-of-work.js";
+import {
+  PostgresUnitOfWork,
+  type PostgresTransactionContext,
+} from "../../src/infrastructure/postgres-unit-of-work.js";
 import { createTestDatabase, type TestDatabase } from "../../test-support/test-database.js";
 
 let db: TestDatabase;
@@ -150,5 +153,19 @@ describe("PostgresUnitOfWork (E03-T40 integration)", () => {
       return rows[0]?.v;
     });
     expect(seenInB).toBe(orgB);
+  });
+
+  it("SECURITY MATRIX §4.5: nesting a UnitOfWork inside another's run() throws rather than silently succeeding or double-committing", async () => {
+    const outerUow = new PostgresUnitOfWork(sql);
+
+    await expect(
+      outerUow.run(async (ctx: PostgresTransactionContext) => {
+        // Attempting to open a second transaction on the SAME open
+        // transaction's connection — TransactionSql has no .begin() (a
+        // finding from T31), so this must throw, never silently succeed.
+        const innerUow = new PostgresUnitOfWork(ctx.sql as unknown as Sql);
+        await innerUow.run(async () => "should never get here");
+      }),
+    ).rejects.toThrow();
   });
 });

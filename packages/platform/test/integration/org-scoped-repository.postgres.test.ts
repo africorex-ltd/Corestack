@@ -126,4 +126,27 @@ describe("FixtureWidgetRepository over a directly-authenticated app-role connect
       /unrecognized configuration parameter|invalid input syntax/,
     );
   });
+
+  it("SECURITY MATRIX §4.4: concurrent requests for two different orgs on the same shared pool never cross-contaminate", async () => {
+    const repo = new FixtureWidgetRepository(appRoleSql);
+    const contextA = requireOrgScoped(
+      createContext({ actor: { type: "user", id: "u1" }, organizationId: ORG_A }, ids()),
+    );
+    const contextB = requireOrgScoped(
+      createContext({ actor: { type: "user", id: "u2" }, organizationId: ORG_B }, ids()),
+    );
+
+    // 10 concurrent calls per org, interleaved, against the same 5-connection
+    // pool — proving set_config's transaction-scoping genuinely isolates
+    // concurrent transactions sharing a pool, not just sequential reuse.
+    const calls = Array.from({ length: 20 }, (_, i) =>
+      i % 2 === 0 ? repo.list(contextA) : repo.list(contextB),
+    );
+    const results = await Promise.all(calls);
+
+    results.forEach((widgets, i) => {
+      const expected = i % 2 === 0 ? ["org-a-widget"] : ["org-b-widget"];
+      expect(widgets.map((w) => w.note)).toEqual(expected);
+    });
+  });
 });
