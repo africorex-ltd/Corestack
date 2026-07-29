@@ -1,6 +1,19 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`kernel public surface > runtime exports are intentional 1`] = `
+exports[`kernel public surface > runtime exports are intentional (./testing subpath) 1`] = `
+[
+  "defineCacheContractSuite",
+  "defineEncrypterContractSuite",
+  "defineEventBusContractSuite",
+  "defineIdempotencyStoreContractSuite",
+  "defineLoggerContractSuite",
+  "defineProcessedEventStoreContractSuite",
+  "defineRateLimiterContractSuite",
+  "defineUnitOfWorkContractSuite",
+]
+`;
+
+exports[`kernel public surface > runtime exports are intentional (main entry) 1`] = `
 [
   "CaptureLogger",
   "ConflictError",

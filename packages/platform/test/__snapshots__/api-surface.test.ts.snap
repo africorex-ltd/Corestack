@@ -1,0 +1,82 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`platform public surface > runtime exports are intentional (./postgres subpath) 1`] = `
+[
+  "PostgresDatabasePing",
+  "PostgresIdempotencyStore",
+  "PostgresMigrationRunnerStore",
+  "PostgresMigrationsStatus",
+  "PostgresOutboxRelayStore",
+  "PostgresProcessedEventStore",
+  "PostgresRateLimiter",
+  "PostgresUnitOfWork",
+  "createOutboxStaging",
+  "ensureIdempotencyKeysSchema",
+  "ensureMigrationTrackingSchema",
+  "ensureOutboxSchema",
+  "ensurePlatformSchema",
+  "ensureRateLimitsSchema",
+  "ensureTenancyRoles",
+  "maintainOutboxPartitions",
+  "pruneIdempotencyKeys",
+  "pruneRateLimitWindows",
+  "runOrgScopedQuery",
+  "withOrgContext",
+  "writeOutboxEvents",
+]
+`;
+
+exports[`platform public surface > runtime exports are intentional (./testing subpath) 1`] = `
+[
+  "InMemoryEnvSource",
+  "InMemoryMembershipLookup",
+  "InMemoryMigrationRunnerStore",
+  "InMemoryMigrationSource",
+  "InMemoryOutboxRelayStore",
+  "InMemorySecretResolver",
+]
+`;
+
+exports[`platform public surface > runtime exports are intentional (main entry) 1`] = `
+[
+  "FsMigrationSource",
+  "ORGANIZATION_PURGE_REQUESTED_EVENT",
+  "OutboxRelay",
+  "ProcessEnvSource",
+  "RelayLagRecorder",
+  "SECRET_REF_PREFIX",
+  "assertModuleConformance",
+  "assertSafeSqlIdentifier",
+  "assertValidModuleName",
+  "buildTenantIsolationDdl",
+  "checkLiveness",
+  "checkModuleConformance",
+  "checkReadiness",
+  "checkStatusToReadinessLevel",
+  "computeAdvisoryLockKey",
+  "computeChainChecksum",
+  "computeChecksum",
+  "computeMonthlyPartitionBounds",
+  "createCoreStack",
+  "fromOutboxRow",
+  "isSecretRefValue",
+  "loadAllModuleConfigs",
+  "loadMigrationSet",
+  "loadModuleConfig",
+  "moduleHealthStatusToReadinessLevel",
+  "parseMigrationFile",
+  "parseMigrationHeader",
+  "parseMigrationVersion",
+  "partitionUpperBound",
+  "planPartitionDrops",
+  "registerPurgeHandler",
+  "requireOrgScoped",
+  "resolveContext",
+  "runMigrations",
+  "shutdownGracefully",
+  "stripSecretRefPrefix",
+  "toOutboxRow",
+  "worstCheckStatus",
+  "worstReadinessLevel",
+]
+`;

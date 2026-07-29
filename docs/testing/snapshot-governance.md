@@ -133,3 +133,29 @@ were already built the way this document now requires, since the
 constraints above were the same ones applied when each was written. This
 audit exists so future additions have a written standard to be checked
 against, not because either existing snapshot violated one.
+
+## Export-surface snapshot coverage (closed, E05 readiness gate, 2026-07-30)
+
+The E04 export-surface audit named a real gap: only kernel's main entry had
+an export-surface snapshot. This is now closed — every declared export
+condition across both packages has one:
+
+- `packages/kernel/test/api-surface.test.ts` — main entry (`.`) and
+  `./testing` subpath, two snapshots in one file.
+- `packages/platform/test/api-surface.test.ts` — main entry (`.`),
+  `./postgres`, and `./testing`, three snapshots in one file. `./postgres`
+  is safe in the unit lane: every file it re-exports from uses `import
+  type` only for the `postgres` package (verified by grep before writing
+  the test) — the real driver is injected by the caller, never imported at
+  module scope, so no live database connection is needed to snapshot it.
+
+**Intentionally unsnapshotted:** `examples/acme-crm-module`'s own exports.
+Example modules are demonstration code proving the golden path, not a
+published library surface with a stability contract — there is no
+`npm publish` concept for `examples/*`, and no consumer imports it as a
+dependency. Snapshotting it would police churn in a file whose entire
+purpose is to be edited freely as the golden path evolves.
+
+Both packages' export surfaces are now fully gated: 5 of 5 declared
+`exports` conditions across kernel and platform have a snapshot test. No
+un-gated public export condition remains.

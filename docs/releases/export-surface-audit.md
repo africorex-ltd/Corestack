@@ -74,34 +74,25 @@ audit for removal timing or migration guidance.
 
 ## Snapshot drift / export-surface gate coverage
 
-This is the audit's most material finding, expanding on
-`contract-coverage-audit.md`'s Residual Gap #2:
+**Closed (E05 readiness gate, Section 4, 2026-07-30).** At the time this
+audit was originally written, only `@corestack/kernel`'s main entry (`.`)
+was gated, by `packages/kernel/test/api-surface.test.ts`. The founder's
+E05 readiness gate directive closed the remaining 4 conditions:
 
-- **`@corestack/kernel`'s main entry (`.`)** is gated by
-  `packages/kernel/test/api-surface.test.ts` — a single snapshot over
-  `Object.keys(kernel).sort()`. This snapshot was correctly updated this
-  session (via reviewed `vitest -u`) when `redactSensitiveFields`/
-  `serializeErrorForLog` were added (ADR-0022).
-- **`@corestack/kernel`'s `./testing` subpath has no equivalent gate.**
-  All 8 contract-suite factory functions plus `SuiteHarness` are genuine
-  public API (any module author building a new adapter is expected to
-  import from here per `contract-governance.md`), but nothing would flag
-  an accidental removal or rename the way the main entry's snapshot would.
-- **`@corestack/platform` has no export-surface snapshot at all, for any
-  of its three conditions.** Neither `.`, `./postgres`, nor `./testing` has
-  a test analogous to kernel's `api-surface.test.ts`. This is a larger gap
-  than the kernel one: platform's main barrel alone exports over 40 named
-  symbols across migrations, outbox, health, tenancy, and purge — any of
-  which could be accidentally renamed or dropped in a refactor with no
-  automated signal beyond a downstream consumer's build breaking.
+- `@corestack/kernel`'s `./testing` subpath — added as a second `it` block
+  in the same `api-surface.test.ts` file (8 contract-suite factory names).
+- `@corestack/platform`'s main entry, `./postgres`, and `./testing` — all
+  three added in a new `packages/platform/test/api-surface.test.ts`,
+  mirroring kernel's file. `./postgres` was verified safe to snapshot in
+  the unit lane before writing the test: every file it re-exports from
+  uses `import type` only for the `postgres` package, never a runtime
+  import, so no live database connection is required.
 
-**Recommendation** (recorded here, not actioned in this pass, since adding
-new test infrastructure is a scope decision beyond "audit what exists"):
-add one `api-surface.test.ts`-style snapshot test per package per exported
-condition — kernel needs one more (`./testing`), platform needs three
-(`.`, `./postgres`, `./testing`). This is a small, mechanical addition that
-directly closes the gap this audit identifies; a natural first task for
-whoever picks up E04's next phase.
+All 5 declared export conditions across both packages now have snapshot
+coverage. See `docs/testing/snapshot-governance.md`'s "Export-surface
+snapshot coverage" section for the full detail, including why
+`examples/acme-crm-module` is deliberately excluded (demonstration code,
+not a published library surface).
 
 ## Changelog consistency
 
@@ -140,6 +131,6 @@ accurately. No changes needed there.
 | Types-first ordering | Pass — enforced by fitness rule |
 | Accidental internal leaks | None found |
 | Deprecated symbols | None exist |
-| Export-surface snapshot coverage | **Gap** — kernel's `./testing` and all of platform's three conditions are ungated (see Recommendation above) |
+| Export-surface snapshot coverage | **Closed (2026-07-30)** — all 5 declared conditions across both packages now snapshotted, see above |
 | CHANGELOG consistency | Pass — every session change entered |
 | README consistency | 2 stale entries found and fixed (kernel package.json description, platform README test counts) |

@@ -389,3 +389,50 @@ expected violation message, restored it.
 Both stay reviewed-convention items, stated here so a future contributor
 knows the check was considered and deliberately not automated, not
 overlooked.
+
+## Mutation-proof review (E05 readiness gate, Section 5) — 2026-07-30
+
+The E04 contract-coverage audit named four suites with no mutation proof:
+`Cache`, `RateLimiter`, `Encrypter`, `UnitOfWork`. Each was reviewed
+individually rather than mechanically closed — the gate's own directive
+warned explicitly against "weak or artificial mutation tests."
+
+**Added, all in `packages/kernel/test/ports.test.ts`, following the exact
+pattern `event-bus.test.ts`'s `ReverseOrderEventBus` established** (a
+small fixture implementing the port with one plausible real mistake, one
+targeted assertion proving the shared suite's relevant check has teeth,
+never registered through the suite itself):
+
+- **`Cache` — `NeverExpiringCache`**: ignores `ttlMs` entirely. A cache
+  that "works" under casual testing (get/set/delete all round-trip) and
+  only fails the moment something depends on expiry.
+- **`RateLimiter` — `LexicographicRateLimiter`**: compares `count`/`limit`
+  as strings. Not hypothetical — this is the exact defect class found and
+  fixed for real in `PostgresRateLimiter` (E03-T41's untyped-SQL-parameter
+  bug, where `10 <= 5` evaluated `true` under Postgres's default `text`
+  typing). Reproduced in pure JS to prove the shared suite would catch it
+  in any adapter, not only the one where it actually happened.
+- **`Encrypter` — `FixedIvEncrypter`**: reuses an all-zero IV every call.
+  IV/nonce reuse under AES-GCM is one of the most common real-world
+  misimplementations of the primitive, not a contrived edge case.
+
+Kernel: 111 → 114 tests (3 new targeted assertions, one per fixture).
+
+**Deferred, with rationale: `UnitOfWork`.** Its three assertions (result-
+return, dispatch-after-commit-in-order, discard-on-throw) don't have an
+equivalent "plausible silent mistake" shape — a fixture built to violate
+"dispatch only after commit" (e.g. eager, pre-commit dispatch) would fail
+obviously under basic manual testing, not silently pass casual review the
+way an ignored TTL, a string comparison, or a reused IV would. Building one
+anyway would be exactly the artificial-test failure mode the directive
+warned against. Full reasoning in `contract-coverage-audit.md`'s
+"UnitOfWork mutation-proof: why deferred, not added" section. Revisit if a
+second real `UnitOfWork` adapter ever surfaces a genuine implementation
+hazard the way E03-T41 did for `RateLimiter` — add the fixture then,
+grounded in that real case.
+
+**Result: 3 of 4 reviewed suites gained mutation proof; 1 deliberately
+deferred.** Combined with the suites that already had it (`Logger`,
+`ProcessedEventStore`, `IdempotencyStore`) and the one partial
+(`EventBus`), `UnitOfWork` is now the only contract suite without mutation
+proof in this codebase — down from four before this review.
