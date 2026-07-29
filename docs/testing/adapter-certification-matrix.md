@@ -17,7 +17,7 @@
 | `Encrypter`          | `WebCryptoAesGcmEncrypter` | — (KMS-backed adapter named in the port doc as a future extension, not yet built) | WebCrypto: **certified** (T06). KMS: **pending** |
 | `ProcessedEventStore`| `InMemoryProcessedEventStore` | `PostgresProcessedEventStore` | both: **certified** (T07) — found and fixed a real UUID-vs-readable-id bug in the suite itself before it shipped |
 | `IdempotencyStore`   | `InMemoryIdempotencyStore` | `PostgresIdempotencyStore`     | pending                                                                 |
-| Health-check (`checkLiveness`/`checkReadiness`) | n/a | n/a | **not applicable** — these are platform functions taking dependencies as parameters, not a port with swappable implementations; there is nothing for a contract-suite factory to construct. Covered instead by snapshot tests over the JSON payload shape (see contract-governance.md's snapshot-update rules). |
+| Health-check (`checkLiveness`/`checkReadiness`) | n/a | n/a | **not applicable** (T08) — these are platform functions taking dependencies as parameters, not a port with swappable implementations; there is nothing for a contract-suite factory to construct. Covered instead by 3 snapshot tests over the exact JSON payload shape — minimal, fully-configured, and `checkLiveness` — in `packages/platform/test/application/health-readiness.test.ts`'s "health payload shape (snapshot)" block (see contract-governance.md's snapshot-update rules). |
 
 ## Why `EventBus`'s Postgres column is "not applicable," not "blocked"
 

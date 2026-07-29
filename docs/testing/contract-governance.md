@@ -265,3 +265,22 @@ literals — the same "UUID vs readable-id" gotcha already documented
 elsewhere in this codebase's integration tests, now also documented here
 as a reminder for any future suite with a similarly-typed column. Kernel:
 107 → 110 tests. Platform integration: 93 → 95.
+
+### Health-check (T08) — 2026-07-29
+
+Not a contract suite — deliberately. `checkLiveness`/`checkReadiness` are
+plain functions taking dependencies as parameters (`ReadinessDeps`), not a
+port with a swappable implementation set; there is nothing for a
+contract-suite factory to construct, and forcing one here would be a unit
+test wearing a costume (see "How to add a new contract suite," item 1,
+above). Per the founder directive's own fallback request ("snapshot-test
+the public payloads"), added 3 `toMatchSnapshot()` tests in
+`health-readiness.test.ts` pinning the exact JSON shape for `checkLiveness`,
+a minimal `checkReadiness` (no optional checks configured), and a fully-
+configured one (relay lag, backlog, and module health all present). Every
+existing test in that file already asserts individual field values in
+depth — these three exist purely to catch an accidental shape change
+(an added/removed/renamed field) that per-field assertions could miss.
+Recorded in the certification matrix as **not applicable**, not
+`pending`/`blocked` — there is no missing adapter to build here. Platform
+unit: 19 → 22.

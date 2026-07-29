@@ -1,0 +1,82 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`health payload shape (snapshot) > checkLiveness's payload shape 1`] = `
+{
+  "status": "live",
+  "timestamp": "2026-07-29T00:00:00.000Z",
+}
+`;
+
+exports[`health payload shape (snapshot) > checkReadiness's payload shape — every optional check configured 1`] = `
+{
+  "checks": {
+    "backlog": {
+      "consumers": {
+        "audit": {
+          "count": 5,
+          "status": "ok",
+        },
+      },
+      "status": "ok",
+    },
+    "clockSkew": {
+      "skewMs": 0,
+      "status": "ok",
+    },
+    "database": {
+      "latencyMs": 1,
+      "status": "ok",
+    },
+    "migrations": {
+      "pendingCount": 0,
+      "pendingModules": undefined,
+      "status": "ok",
+    },
+    "relayLag": {
+      "consumers": {
+        "audit": {
+          "lagMs": 100,
+          "staleMs": 0,
+          "status": "ok",
+        },
+      },
+      "status": "ok",
+    },
+  },
+  "modules": {
+    "modules": {
+      "tenancy": {
+        "status": "healthy",
+      },
+    },
+    "status": "healthy",
+  },
+  "status": "ready",
+  "timestamp": "2026-07-29T00:00:00.000Z",
+}
+`;
+
+exports[`health payload shape (snapshot) > checkReadiness's payload shape — minimal (nothing optional configured) 1`] = `
+{
+  "checks": {
+    "backlog": undefined,
+    "clockSkew": {
+      "skewMs": 0,
+      "status": "ok",
+    },
+    "database": {
+      "latencyMs": 1,
+      "status": "ok",
+    },
+    "migrations": {
+      "pendingCount": 0,
+      "pendingModules": undefined,
+      "status": "ok",
+    },
+    "relayLag": undefined,
+  },
+  "modules": undefined,
+  "status": "ready",
+  "timestamp": "2026-07-29T00:00:00.000Z",
+}
+`;

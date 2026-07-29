@@ -256,3 +256,49 @@ describe("RelayLagRecorder", () => {
     expect(recorder.snapshot().get("billing")?.lagMs).toBe(42);
   });
 });
+
+/**
+ * `checkLiveness`/`checkReadiness` are plain functions taking dependencies
+ * as parameters, not a port with swappable implementations — there is
+ * nothing for a contract-suite factory to construct (see
+ * docs/testing/adapter-certification-matrix.md, "Health-check: not
+ * applicable"). Per the founder directive's own request to
+ * "snapshot-test the public payloads" instead, these two tests pin the
+ * exact JSON shape once each for the minimal and fully-configured cases —
+ * every existing test above already asserts individual field values in
+ * depth; this pair exists purely to catch an accidental shape change
+ * (an added/removed/renamed field) that per-field assertions could miss
+ * if a new field were added without updating any of them.
+ */
+describe("health payload shape (snapshot)", () => {
+  it("checkLiveness's payload shape", () => {
+    expect(checkLiveness(new FixedClock(NOW))).toMatchSnapshot();
+  });
+
+  it("checkReadiness's payload shape — minimal (nothing optional configured)", async () => {
+    const result = await checkReadiness(baseDeps());
+    expect(result).toMatchSnapshot();
+  });
+
+  it("checkReadiness's payload shape — every optional check configured", async () => {
+    const recorder = new RelayLagRecorder(new FixedClock(NOW));
+    recorder.record("audit", 100);
+    const backlogPort: BacklogCheckPort = { countBacklog: async () => 5 };
+    const coreStack: CoreStack = {
+      modules: {},
+      health: async () => ({ status: "healthy", modules: { tenancy: { status: "healthy" } } }),
+    };
+
+    const result = await checkReadiness(
+      baseDeps({
+        relayLag: {
+          recorder,
+          thresholds: { degradedMs: 30_000, unreadyMs: 300_000, staleAfterMs: 600_000 },
+        },
+        backlog: { port: backlogPort, consumers: ["audit"], thresholds: { degraded: 100, unready: 1000 } },
+        coreStack,
+      }),
+    );
+    expect(result).toMatchSnapshot();
+  });
+});

@@ -616,6 +616,18 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   by switching to real UUID literals. Kernel now at 110 tests; platform
   integration at 95.
 
+- **E04-T08 Health-check: snapshot tests, not a contract suite.**
+  `checkLiveness`/`checkReadiness` are plain functions taking dependencies
+  as parameters, not a port with swappable implementations — there is
+  nothing for a contract-suite factory to construct, so this is
+  deliberately **not applicable** in the certification matrix rather than
+  a forced suite. Added 3 `toMatchSnapshot()` tests instead, pinning the
+  exact JSON payload shape for `checkLiveness`, a minimal `checkReadiness`,
+  and a fully-configured one (relay lag, backlog, module health all
+  present) — every existing test already asserts individual field values
+  in depth; these exist purely to catch an accidental shape change.
+  Platform unit tests now at 22 (health-readiness file).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
