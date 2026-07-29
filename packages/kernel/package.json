@@ -1,7 +1,7 @@
 {
   "name": "@corestack/kernel",
   "version": "0.1.0",
-  "description": "CoreStack shared contracts: Result, error taxonomy, Context, domain events, and the EventBus/Logger/Cache/RateLimiter/Encrypter/UnitOfWork ports with reference implementations.",
+  "description": "CoreStack shared contracts: Result, error taxonomy, Context, domain events, and the EventBus/Logger/Cache/RateLimiter/Encrypter/UnitOfWork/ProcessedEventStore/IdempotencyStore ports with reference implementations.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
