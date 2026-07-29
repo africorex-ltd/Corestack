@@ -23,6 +23,7 @@ supersedes the old one.
 | [0015](0015-zero-downtime-upgrade-contract.md)              | Zero-downtime N/N+1 upgrade contract                         | Accepted |
 | [0016](0016-platform-as-second-shared-base.md)              | `@corestack/platform` is a second shared dependency base     | Accepted |
 | [0017](0017-drizzle-deferred-to-first-module-repository.md) | Drizzle deferred to the first module repository adapter      | Accepted |
+| [0018](0018-cache-no-postgres-backend-redis-deferred.md)    | No Postgres-backed cache; Redis `CachePort` adapter deferred | Accepted |
 
 ## Writing an ADR
 

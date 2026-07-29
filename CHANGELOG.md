@@ -428,6 +428,21 @@ ROLE` session T30's own tests used. 5 new unit/type tests + 3 new
   (platform now at 191 unit + 71 integration). Full component spec:
   [packages/platform/docs/rate-limiter.md](packages/platform/docs/rate-limiter.md).
 
+- **E03-T42 `CachePort` decision — no Postgres backend, Redis deferred
+  (ADR-0018):** no new code. E02-T07 already shipped the kernel's `Cache`
+  port, `versionedKey`, and the `InMemoryLruCache` reference adapter;
+  `Database §3`'s schema has no cache table, so Postgres was never a
+  candidate backend — this closes that as an explicit decision rather than
+  a silent gap. The Redis adapter (Architecture §12's multi-node reference)
+  is deferred for two concrete reasons, not preference: no ADR has approved
+  a Redis client dependency (`ioredis`/`redis`), and this dev environment
+  has no Docker, so the acceptance criterion's own Testcontainers
+  verification can't run here — unlike the Postgres integration lane, there
+  is no local-Redis fallback. Shipping an adapter whose contract-suite run
+  never actually executed would invert this epic's established practice of
+  verifying empirically before writing production code. Full decision note:
+  [docs/adr/0018-cache-no-postgres-backend-redis-deferred.md](docs/adr/0018-cache-no-postgres-backend-redis-deferred.md).
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted

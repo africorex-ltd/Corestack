@@ -17,7 +17,10 @@
 > T40 Postgres UnitOfWork done (ADR-0017: Drizzle deferred) — see
 > [unit-of-work.md](../../packages/platform/docs/unit-of-work.md);
 > T41 Postgres RateLimiter done — see
-> [rate-limiter.md](../../packages/platform/docs/rate-limiter.md)).
+> [rate-limiter.md](../../packages/platform/docs/rate-limiter.md);
+> T42 CachePort decision done (ADR-0018: no Postgres backend, Redis
+> deferred) — see
+> [ADR-0018](../adr/0018-cache-no-postgres-backend-redis-deferred.md)).
 
 ## Standing policy
 
@@ -52,7 +55,7 @@ for the first instance of this standard.
 
 | Metric                      | Value                                                                                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| ADRs accepted               | **17** (0001–0017)                                                                                                                           |
+| ADRs accepted               | **18** (0001–0018)                                                                                                                           |
 | Architecture fitness tests  | **Live in CI**: layer boundaries (lint zones + fixtures), import cycles, cross-package boundaries, manifest/ADR compliance, kernel zero-deps |
 | Public API stability        | Kernel runtime surface snapshot-gated; full type-level report at E19-T14                                                                     |
 | Kernel runtime dependencies | **0** (fitness-test-enforced)                                                                                                                |
