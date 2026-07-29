@@ -12,7 +12,7 @@
 | `Cache`              | `InMemoryLruCache`         | — (ADR-0018: none, deferred)    | in-memory: **certified**. Postgres: **not applicable** (no backend exists) |
 | `RateLimiter`        | `InMemoryRateLimiter`      | `PostgresRateLimiter`          | both: **certified** (E04-T01)                                          |
 | `Logger`             | `CaptureLogger`, `NoopLogger` | — (pino adapter not yet built) | in-memory: **certified** (ADR-0022). Postgres/pino: **pending** (adapter doesn't exist yet) |
-| `EventBus`           | `InMemoryEventBus`         | — (outbox relay is a different mechanism, not an `EventBus` implementation) | pending |
+| `EventBus`           | `InMemoryEventBus`         | — (outbox relay is a different mechanism, not an `EventBus` implementation) | in-memory: **certified** (T04). Postgres: **not applicable** |
 | `UnitOfWork`         | `InMemoryUnitOfWork`       | `PostgresUnitOfWork`           | pending                                                                 |
 | `Encrypter`          | `WebCryptoAesGcmEncrypter` | — (no second implementation)   | pending                                                                 |
 | `ProcessedEventStore`| `InMemoryProcessedEventStore` | `PostgresProcessedEventStore` | pending                                                                 |

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createContext,
@@ -7,7 +7,12 @@ import {
   InMemoryEventBus,
   SequentialIdGenerator,
   type DomainEvent,
+  type EventBus,
+  type EventSubscription,
 } from "../src/index.js";
+import { defineEventBusContractSuite, type SuiteHarness } from "../src/testing/index.js";
+
+const harness: SuiteHarness = { describe, it, expect, beforeEach, afterEach };
 
 function makeEvent(name: string, version = 1): DomainEvent {
   return createEvent(
@@ -23,69 +28,53 @@ function makeEvent(name: string, version = 1): DomainEvent {
   );
 }
 
-describe("InMemoryEventBus", () => {
-  it("delivers to matching subscribers sequentially in subscription order", async () => {
-    const bus = new InMemoryEventBus();
+describe("InMemoryEventBus via the shared EventBus contract suite", () => {
+  defineEventBusContractSuite(harness, () => new InMemoryEventBus(), makeEvent);
+});
+
+/**
+ * A deliberately broken `EventBus`: delivers to subscriptions in REVERSE
+ * subscription order instead of the normative order. This is not run
+ * through `defineEventBusContractSuite` — doing so would register
+ * permanently-failing tests in this file's normal run. Instead, this one
+ * targeted assertion proves the fixture actually violates the contract
+ * the shared suite's "sequentially, in subscription order" test checks —
+ * demonstrating that assertion has real teeth, the same
+ * verify-against-an-unsafe-variant discipline used everywhere else in this
+ * codebase, without shipping a red test to CI.
+ */
+class ReverseOrderEventBus implements EventBus {
+  #subscriptions: EventSubscription[] = [];
+
+  subscribe(subscription: EventSubscription) {
+    this.#subscriptions.push(subscription);
+    return () => {
+      this.#subscriptions = this.#subscriptions.filter((s) => s !== subscription);
+    };
+  }
+
+  async publish(events: readonly DomainEvent[]): Promise<void> {
+    for (const event of events) {
+      for (const subscription of [...this.#subscriptions].reverse()) {
+        if (subscription.event !== "*" && subscription.event !== event.name) continue;
+        await subscription.handler(event);
+      }
+    }
+  }
+}
+
+describe("EventBus contract regression proof", () => {
+  it("SECURITY-equivalent proof: a bus that delivers out of subscription order fails the ordering contract the shared suite checks", async () => {
+    const bus = new ReverseOrderEventBus();
     const calls: string[] = [];
     bus.subscribe({ consumer: "first", event: "a.b", handler: () => void calls.push("first") });
     bus.subscribe({ consumer: "second", event: "a.b", handler: () => void calls.push("second") });
-    bus.subscribe({ consumer: "other", event: "x.y", handler: () => void calls.push("other") });
 
     await bus.publish([makeEvent("a.b")]);
-    expect(calls).toEqual(["first", "second"]);
-  });
 
-  it("wildcard subscribers receive every event", async () => {
-    const bus = new InMemoryEventBus();
-    const seen: string[] = [];
-    bus.subscribe({ consumer: "audit", event: "*", handler: (e) => void seen.push(e.name) });
-
-    await bus.publish([makeEvent("a.b"), makeEvent("c.d")]);
-    expect(seen).toEqual(["a.b", "c.d"]);
-  });
-
-  it("version filter delivers only declared versions", async () => {
-    const bus = new InMemoryEventBus();
-    const seen: number[] = [];
-    bus.subscribe({
-      consumer: "v1only",
-      event: "a.b",
-      versions: [1],
-      handler: (e) => void seen.push(e.version),
-    });
-
-    await bus.publish([makeEvent("a.b", 1), makeEvent("a.b", 2)]);
-    expect(seen).toEqual([1]);
-  });
-
-  it("attempts every handler even when one throws, then aggregates failures", async () => {
-    const bus = new InMemoryEventBus();
-    const calls: string[] = [];
-    bus.subscribe({
-      consumer: "boom",
-      event: "a.b",
-      handler: () => {
-        calls.push("boom");
-        throw new Error("boom");
-      },
-    });
-    bus.subscribe({ consumer: "after", event: "a.b", handler: () => void calls.push("after") });
-
-    await expect(bus.publish([makeEvent("a.b")])).rejects.toBeInstanceOf(AggregateError);
-    expect(calls).toEqual(["boom", "after"]);
-  });
-
-  it("unsubscribe stops delivery", async () => {
-    const bus = new InMemoryEventBus();
-    const calls: string[] = [];
-    const unsubscribe = bus.subscribe({
-      consumer: "temp",
-      event: "a.b",
-      handler: () => void calls.push("temp"),
-    });
-    unsubscribe();
-
-    await bus.publish([makeEvent("a.b")]);
-    expect(calls).toEqual([]);
+    // The shared suite asserts `["first", "second"]` — this fixture produces
+    // the reverse, proving the assertion is not vacuously true.
+    expect(calls).toEqual(["second", "first"]);
+    expect(calls).not.toEqual(["first", "second"]);
   });
 });

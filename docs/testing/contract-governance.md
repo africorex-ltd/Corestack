@@ -158,3 +158,28 @@ converted kernel's own `ports.test.ts` to run it against both adapters.
 Kernel: 81 → 97 tests. No Postgres `Logger` adapter exists (the future pino
 adapter isn't built) — matrix row is `pending` for that column, not
 `blocked` or `n/a`, since it's planned, just not yet built.
+
+### EventBus (T04) — 2026-07-29
+
+Scoped to exactly what `event-bus.ts`'s doc comment makes normative:
+sequential in-subscription-order delivery (both single-event and batch),
+wildcard matching, version filtering, every-handler-attempted with
+aggregated failures, unsubscribe, and that a published event reaches its
+handler with every envelope field unchanged. Added one clarifying test —
+`publish()` has no built-in deduplication, republishing the same event
+redelivers it — to make explicit why `idempotentHandler`/
+`ProcessedEventStore` exist, rather than letting "idempotent publication"
+(requested in the founder directive) read as a claim `EventBus` itself
+doesn't and shouldn't make.
+
+No Postgres `EventBus` exists, and none is planned — the outbox relay is a
+deliberately separate async/checkpointed mechanism (ADR-0009), not a second
+`EventBus` implementation. Matrix row: **not applicable**, not `pending`.
+
+Per Section 5's request for "a failing adapter fixture that violates
+delivery order": added `ReverseOrderEventBus` in `event-bus.test.ts` — a
+fixture that delivers subscriptions in reverse order. It is **not** run
+through `defineEventBusContractSuite` (that would register a
+permanently-failing test in CI); instead one targeted assertion proves the
+fixture actually produces the wrong order, demonstrating the shared suite's
+ordering assertion has real teeth without shipping a red test.

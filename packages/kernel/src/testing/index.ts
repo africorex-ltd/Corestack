@@ -15,3 +15,7 @@ export {
   type LoggerContractAdapter,
   type LoggerContractFactory,
 } from "./logger-contract.js";
+export {
+  defineEventBusContractSuite,
+  type EventBusContractFactory,
+} from "./event-bus-contract.js";

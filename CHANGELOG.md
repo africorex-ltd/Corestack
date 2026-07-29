@@ -556,6 +556,20 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   (`@corestack/kernel/testing`) proves both adapters against the corrected
   contract; kernel now at 97 tests. Full analysis: ADR-0022.
 
+- **E04-T04 EventBus contract suite:** `defineEventBusContractSuite`
+  proves `InMemoryEventBus` against every behavior its own doc comment
+  makes normative (sequential in-order delivery, wildcard/version
+  matching, every-handler-attempted with aggregated failures, unsubscribe,
+  unchanged envelope fields on delivery), plus a clarifying test that
+  `publish()` has no built-in deduplication — republishing the same event
+  redelivers it, which is why `idempotentHandler`/`ProcessedEventStore`
+  exist. No Postgres `EventBus` exists or is planned (the outbox relay is
+  a deliberately separate async mechanism, ADR-0009) — recorded as **not
+  applicable** in the new adapter certification matrix, not "pending."
+  Added `ReverseOrderEventBus`, a synthetic fixture proving the shared
+  suite's ordering assertion has real teeth, without registering a
+  permanently-failing test in CI. Kernel now at 101 tests.
+
 - **E03-T32 context resolution:** `resolveContext` implements ADR-0008's
   layer 2 tenant-isolation guarantee — a request `Context`'s organization
   scope is server-resolved via a `MembershipLookup` port, never trusted
