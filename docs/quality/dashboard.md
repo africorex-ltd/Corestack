@@ -26,7 +26,16 @@
 > prerequisite gap) — see
 > [idempotency-key-store.md](../../packages/platform/docs/idempotency-key-store.md).
 > Full epic-exit Engineering Health Report — see
-> [E03-exit-report.md](../engineering/reviews/E03-exit-report.md)).
+> [E03-exit-report.md](../engineering/reviews/E03-exit-report.md).
+> **Tenant Isolation Certification complete (2026-07-29)**: verdict
+> CERTIFIED WITH RESIDUAL RISKS — see
+> [tenant-isolation-certification.md](../security/tenant-isolation-certification.md),
+> [security-scorecard.md](../security/security-scorecard.md), and
+> [v0.1.0-alpha-readiness.md](../releases/v0.1.0-alpha-readiness.md). Found
+> and fixed a real cross-tenant vulnerability (ADR-0020); added
+> `GlobalRepository` + two architecture-fitness rules (ADR-0021); shipped
+> the golden-path `examples/acme-crm-module` and a mandatory contributor
+> safety guide).
 
 ## Standing policy
 
@@ -43,25 +52,25 @@ for the first instance of this standard.
 
 | Severity | Open                      | Resolved | Notes                                                                                                                                                                                                                                                                                 |
 | -------- | ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P0**   | **0**                     | 4        | AUD-01…04 — see [remediation log](remediation-log.md)                                                                                                                                                                                                                                 |
+| **P0**   | **0**                     | 5        | AUD-01…04 — see [remediation log](remediation-log.md); **+1** cross-tenant idempotency-key replay found and fixed during the Tenant Isolation Certification, never exposed to a real caller — see ADR-0020                                                                            |
 | **P1**   | 1 _(scheduled by design)_ | 6        | AUD-07 is a _decision deferred to E06 design_ (auth limiter algorithm), not an unfixed defect                                                                                                                                                                                         |
 | **P2**   | 9 _(6 mapped + 3 new)_    | 2        | AUD-12→E01-T02.4, AUD-13 done, AUD-14/15/16/18/19 tracked; **+3 new** from the outbox security review — checkpoint-table privilege separation, no per-handler timeout, no admin-action audit log (none externally exploitable — see [outbox-review.md](../security/outbox-review.md)) |
 
 ## Test & coverage
 
-| Metric               | Value                                                                                                                  |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 51 files / **375 tests** (kernel 74 · lint fixtures 14 · architecture fitness 16 · platform 191 unit + 80 integration) |
-| Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                    |
-| Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                       |
-| Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                           |
-| Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                            |
+| Metric               | Value                                                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Test files / tests   | 55 files / **403 tests** (kernel 76 · lint fixtures 15 · architecture fitness 26 · platform 191 unit + 88 integration · example module 3 unit + 4 integration) |
+| Kernel coverage (v8) | **97.7% stmts · 98.2% branch · 90.7% funcs** (target ≥90% domain/application — met)                                                                            |
+| Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
+| Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
+| Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                                                                    |
 
 ## Architecture & API
 
 | Metric                      | Value                                                                                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| ADRs accepted               | **19** (0001–0019)                                                                                                                           |
+| ADRs accepted               | **21** (0001–0021)                                                                                                                           |
 | Architecture fitness tests  | **Live in CI**: layer boundaries (lint zones + fixtures), import cycles, cross-package boundaries, manifest/ADR compliance, kernel zero-deps |
 | Public API stability        | Kernel runtime surface snapshot-gated; full type-level report at E19-T14                                                                     |
 | Kernel runtime dependencies | **0** (fitness-test-enforced)                                                                                                                |
@@ -70,7 +79,7 @@ for the first instance of this standard.
 
 | Gate                  | Status                                                                                                                                                                        |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Silent-success guards | ✅ `assert-turbo-tasks` on `test` (min 3) and `test:integration` (exact manifest — now non-trivially exercised: `@corestack/platform`)                                        |
+| Silent-success guards | ✅ `assert-turbo-tasks` on `test` (min 3) and `test:integration` (exact manifest — now non-trivially exercised: `@corestack/platform`, `@corestack/example-acme-crm-module`)  |
 | Integration lane      | ✅ Live: Testcontainers-based in CI (no fixed service container needed); dual-mode locally — a local Postgres via `DATABASE_URL` or Testcontainers, same test code either way |
 | Actions supply chain  | ✅ All actions SHA-pinned; Renovate `pinDigests` maintains                                                                                                                    |
 | Release pipeline      | ⏸ Gated on `RELEASE_ENABLED` repo variable (awaiting npm org + token — external)                                                                                              |
@@ -103,7 +112,7 @@ and [baselines/outbox/](architecture-benchmarks/baselines/outbox/).
 
 ## Documentation coverage
 
-All 19 ADRs current · design docs (architecture/database/api) versioned ·
+All 21 ADRs current · design docs (architecture/database/api) versioned ·
 5 guide structures approved · overview.md reconciled (AUD-11) ·
 docs drift-check joins every epic-exit checklist (AUD-19). **E03 exit
 review complete (2026-07-29)** — see
