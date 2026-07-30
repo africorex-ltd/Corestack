@@ -4,10 +4,13 @@ exports[`tenancy public surface > runtime exports are intentional (./testing sub
 
 exports[`tenancy public surface > runtime exports are intentional (main entry) 1`] = `
 [
+  "CannotInviteOwnerError",
   "DEFAULT_TENANCY_CONFIG",
   "DuplicateSlugError",
   "Email",
+  "INVITATION_CREATED_EVENT",
   "Invitation",
+  "InvitationAlreadyExistsError",
   "InvitationId",
   "InvitationRole",
   "InvitationStatus",
@@ -29,6 +32,7 @@ exports[`tenancy public surface > runtime exports are intentional (main entry) 1
   "assertValidInvitationRole",
   "createOrganization",
   "createTenancyModule",
+  "inviteMember",
   "isLegalInvitationStatusTransition",
   "isLegalMembershipRoleTransition",
   "isLegalMembershipStatusTransition",

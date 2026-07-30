@@ -1,5 +1,6 @@
 import type { OrgScopedContext } from "@corestack/platform";
 
+import type { Email } from "../domain/email.js";
 import type { Invitation } from "../domain/invitation.js";
 
 /**
@@ -15,8 +16,26 @@ import type { Invitation } from "../domain/invitation.js";
  * instead of the superseded `InvitationRecord` placeholder — the same
  * forced, mechanical fix `OrganizationRepository`/`MembershipRepository`
  * went through in E05-T02/T04.
+ *
+ * `existsPendingForEmail`/`save` added in E05-T06 for `inviteMember` —
+ * the same "necessary repository interaction, not a full adapter"
+ * addition `existsBySlug`/`save` were for `OrganizationRepository` in
+ * E05-T03.
  */
 export interface InvitationRepository {
   findById(context: OrgScopedContext, invitationId: string): Promise<Invitation | null>;
   listForOrganization(context: OrgScopedContext): Promise<readonly Invitation[]>;
+
+  /**
+   * Whether a `PENDING` invitation already exists for this email within
+   * this organization. **Not a hard uniqueness guarantee** — like
+   * `OrganizationRepository.existsBySlug`, this is a best-effort,
+   * friendly-error check until E05-T21 adds a real uniqueness constraint;
+   * nothing durable yet prevents two concurrent `inviteMember` calls for
+   * the same email from both passing it.
+   */
+  existsPendingForEmail(context: OrgScopedContext, email: Email): Promise<boolean>;
+
+  /** Persists a newly created (or subsequently modified) invitation. */
+  save(context: OrgScopedContext, invitation: Invitation): Promise<void>;
 }

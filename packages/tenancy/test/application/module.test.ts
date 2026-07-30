@@ -21,6 +21,8 @@ const membershipRepository: MembershipRepository = {
 const invitationRepository: InvitationRepository = {
   findById: async () => null,
   listForOrganization: async () => [],
+  existsPendingForEmail: async () => false,
+  save: async () => undefined,
 };
 const emptyMigrations: MigrationSet = { module: "tenancy", migrations: [] };
 
@@ -33,7 +35,7 @@ function buildModule() {
       membershipRepository,
       invitationRepository,
     },
-    { invitationExpiryHours: "72", invitationRateLimitPerHour: "10" },
+    { invitationExpiryHours: "72", invitationExpiryDays: "7", invitationRateLimitPerHour: "10" },
   );
 }
 

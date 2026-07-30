@@ -113,3 +113,56 @@
   `index.test.ts` export smoke test. No repositories, no use cases, no
   invitation tokens/delivery/acceptance workflow — all explicitly out of
   scope per this task's founder directive.
+
+### `inviteMember` use case (E05-T06)
+
+- The second real application service: coordinates the `Organization`
+  aggregate, the `Invitation` aggregate, `OrganizationRepository`,
+  `InvitationRepository`, and `UnitOfWork` event publication.
+  `InviteMemberCommand`/`InviteMemberResult` (a DTO, never the
+  aggregate), `CannotInviteOwnerError` (extends `ValidationError`),
+  `InvitationAlreadyExistsError` (extends `ConflictError`). Whole flow —
+  organization lookup, duplicate-pending check, aggregate creation,
+  persistence, event publication — runs inside one `UnitOfWork.run()`
+  call. 15 new tests, in-memory test doubles only. Full detail:
+  [docs/modules/invite-member-usecase.md](../../docs/modules/invite-member-usecase.md).
+- **`ForbiddenError` on a client-claimed `organizationId` mismatch.**
+  `inviteMember` takes `context: OrgScopedContext` as its first
+  parameter; `command.organizationId` is parsed and checked for exact
+  equality against `context.organizationId` — a mismatch is an
+  authorization signal, not malformed input, and is rejected outright
+  (firmer than E05-T03's still-open `requestedBy`-vs-`context.actor.id`
+  question, because `organizationId` is exactly the value tenant
+  isolation depends on).
+- Added `existsPendingForEmail`/`save` to `InvitationRepository` (takes
+  `OrgScopedContext`, unlike `OrganizationRepository`'s pre-org-scope
+  `existsBySlug`/`save` — by the time an invitation is created, an
+  organization already exists).
+- Added `tenancyConfigSpec.invitationExpiryDays` (default 7), read by
+  `inviteMember` together with an injected `Clock` to compute
+  `expiresAt`. The pre-existing `invitationExpiryHours` (E05-T01, default
+  72) is left in place, unread by any code, explicitly marked in
+  `config.ts` as superseded-but-not-removed — repurposing it would have
+  silently changed a shipped, documented default, which this task was
+  never asked to do.
+- Added `INVITATION_CREATED_EVENT`/`InvitationCreatedPayload` to
+  `application/events.ts` — the first `INVITATION_*` wire contract in
+  this package (E05-T01 defined only organization/member contracts).
+  `role` is typed `"ADMIN" | "MEMBER"` against the real `InvitationRole`
+  values, deliberately not perpetuating `MemberJoinedPayload.role`'s
+  lowercase T01 mismatch; `expiresAt` is a JSON-serializable ISO string.
+- **Skipped the active-membership check (Section 4 step 2).** No
+  `User` aggregate or repository exists anywhere in this codebase to map
+  an invitee's email to a `userId`, so `Membership`'s `userId`-keyed
+  lookup cannot answer "is this email already an active member" —
+  genuinely unrepresentable today, not a convenience shortcut.
+  `InviteMemberDeps` has no `membershipRepository` field.
+- **Does not check whether the inviter is authorized to invite** — no
+  membership/role check on `invitedBy` itself. Flagged as an open
+  authorization gap, expected to be closed at the HTTP/policy layer or a
+  future task.
+- 1 new test file, 15 new tests, plus 1 backfilled into the existing
+  `index.test.ts` export smoke test (tenancy package: 254→270 total;
+  18→19 files). No repository adapters, no SQL, no RLS, no migrations,
+  no HTTP handlers, no email delivery, no invitation acceptance — all
+  explicitly out of scope per this task's founder directive.

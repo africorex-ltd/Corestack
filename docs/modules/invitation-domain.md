@@ -46,11 +46,14 @@ It does **not** own, and this task does not model:
   `OrganizationRepository`/`MembershipRepository` went through in
   E05-T02/T04 — but no adapter, SQL, or RLS exists yet (E05-T21).
 - **Ownership transfer.** See "Role model" below.
-- **Publishing.** Domain events are collected, not published — no use
-  case exists yet to map them onto a wire-level contract. Unlike
-  `Organization`/`Membership`, no `INVITATION_*` wire event constants
-  exist yet either (E05-T01 only defined organization and member event
-  contracts) — see "Event mapping" below.
+- **Publishing.** Domain events are collected, not published by this
+  aggregate itself. **Update (E05-T06):** `InvitationCreated` now has a
+  wire contract and a use case that maps it —
+  `INVITATION_CREATED_EVENT`/`InvitationCreatedPayload` in
+  `../application/events.ts`, published by `inviteMember`
+  (`invite-member-usecase.md`). The other three event types
+  (`Accepted`/`Revoked`/`Expired`) still have no wire contract and no
+  mapping — see "Event mapping" below.
 
 ## Value objects
 
@@ -219,18 +222,24 @@ nothing. Section 9: no shared `AggregateRoot` abstraction — the same
 hand-written `pullDomainEvents`/`clearDomainEvents` pair `Organization`
 and `Membership` each carry independently.
 
-### Event mapping — not built here, and no wire contract exists yet either
+### Event mapping — partially built as of E05-T06
 
 Unlike `Organization`/`Membership`, whose wire-level event constants
 (`ORGANIZATION_CREATED_EVENT`, `MEMBER_JOINED_EVENT`, etc.) were already
-defined in `../application/events.ts` during E05-T01, **no
-`INVITATION_*` constants exist yet** — E05-T01's Section 8 only covered
-organization and member event contracts. A future task building
-`InviteMember`/`AcceptInvitation` will need to add that wire contract
-*and* perform the domain-event-to-wire-event mapping, following the
-pattern E05-T03's `createOrganization` established for
-`OrganizationCreated`. Flagged here explicitly so it isn't mistaken for
-an oversight when that gap is discovered.
+defined in `../application/events.ts` during E05-T01, no `INVITATION_*`
+constants existed when this doc was first written — E05-T01's Section 8
+only covered organization and member event contracts.
+
+**Update (E05-T06):** `inviteMember` (`invite-member-usecase.md`) added
+`INVITATION_CREATED_EVENT` and `InvitationCreatedPayload`, and performs
+the domain-event-to-wire-event mapping for `InvitationCreated`, following
+the pattern E05-T03's `createOrganization` established for
+`OrganizationCreated`. The other three domain event types
+(`InvitationAccepted`/`InvitationRevoked`/`InvitationExpired`) still have
+no wire contract and no mapping — the use cases that would produce them
+(`AcceptInvitation`, a revoke command, an expiry sweep) don't exist yet.
+Flagged here explicitly so the remaining gap isn't mistaken for an
+oversight when discovered.
 
 ## Future invitation-token note
 
@@ -291,9 +300,10 @@ revoked.revoke(new Date());
 - **Ownership transfer.** No `OWNER` role can be invited; transfer of an
   existing ownership is a separate, future application-layer workflow —
   same non-goal `membership-domain.md` documents.
-- **Wiring domain events into the kernel `EventBus`/`UnitOfWork`** — no
-  use case exists yet to do the wiring, and no wire-level `INVITATION_*`
-  event contract exists yet either (see "Event mapping" above).
+- **Wiring domain events into the kernel `EventBus`/`UnitOfWork`** —
+  done for `InvitationCreated` as of E05-T06 (`inviteMember`); the other
+  three domain event types still have no use case, wire contract, or
+  wiring (see "Event mapping" above).
 - **Automatic expiry.** `expire()` is a capability this aggregate
   exposes; nothing in this task decides *when* it gets called (a
   scheduled sweep, a lazy check on read, etc.) — that policy is a future

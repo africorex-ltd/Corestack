@@ -45,7 +45,7 @@ and dependency rule as `@corestack/platform` and
 ```
 src/
   domain/          Organization (E05-T02) + Membership (E05-T04) + Invitation (E05-T05) aggregates
-  application/     createOrganization use case (E05-T03), repository ports, event contracts, config spec, module factory
+  application/     createOrganization (E05-T03) + inviteMember (E05-T06) use cases, repository ports, event contracts, config spec, module factory
   infrastructure/  reserved — Postgres adapters land in E05-T21..T23
   interface/       reserved — HTTP bindings land in E05-T24..T25
   testing/         reserved — adopter-facing fakes land in E05-T28
@@ -58,10 +58,26 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06)
 
 What exists today:
 
+- **The `inviteMember` use case** — coordinates the `Organization`,
+  `Invitation`, and (deliberately not) `Membership` concepts:
+  `ForbiddenError` on a client-claimed `organizationId` mismatch,
+  `CannotInviteOwnerError` before aggregate creation,
+  `InvitationAlreadyExistsError` on a pending duplicate, an
+  application-level expiry policy (`invitationExpiryDays`, injected
+  clock), and event publication through `UnitOfWork` via the first
+  `INVITATION_*` wire contract. Returns
+  `Result<InviteMemberResult, ValidationError | ForbiddenError |
+  NotFoundError | ConflictError | CannotInviteOwnerError |
+  InvitationAlreadyExistsError>` — a DTO, never the aggregate. Full
+  detail:
+  [docs/modules/invite-member-usecase.md](../../docs/modules/invite-member-usecase.md).
+  No repository adapter, no SQL, no RLS, no HTTP, no email delivery, no
+  invitation acceptance — in-memory test doubles only, same as
+  `createOrganization`.
 - **The `Invitation` aggregate** — a pure domain model: `InvitationId`
   (own value object) + reused `OrganizationId`/`UserId` + a temporary,
   locally-scoped `Email` value object; an `InvitationRole` enum
@@ -111,11 +127,17 @@ What exists today:
   (E05-T05) two methods was mechanically updated to return the real
   aggregate instead of its superseded placeholder record type — the same
   forced fix `OrganizationRepository` went through in E05-T02.
+  `InvitationRepository` gained two more methods in E05-T06
+  (`existsPendingForEmail`, `save`) to support `inviteMember`.
 - Event name constants and payload types
   (`organization.created`/`.updated`/`.deleted`,
-  `member.joined`/`.updated`/`.removed`) — types only, no publishing.
-- `tenancyConfigSpec` — a real `ModuleConfigSpec` with two fields
-  (invitation expiry, invitation rate limit). Not yet exercised end-to-end
+  `member.joined`/`.updated`/`.removed`, `invitation.created` — the last
+  added in E05-T06, the first `INVITATION_*` wire contract) — types only
+  except `invitation.created`, which `inviteMember` actually publishes.
+- `tenancyConfigSpec` — a real `ModuleConfigSpec` with three fields
+  (invitation expiry in hours — superseded, unread; invitation expiry in
+  days — added E05-T06, actually read by `inviteMember`; invitation rate
+  limit). Not yet exercised end-to-end
   — nothing calls `loadModuleConfig(tenancyConfigSpec, …)` today, since no
   composition root installs Tenancy yet. Fields are required strings
   (`z.string().regex(...)`), not optional/coerced numbers —
@@ -129,17 +151,21 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- 18 test files (254 tests) covering the module scaffold (compilation
+- 19 test files (270 tests) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
   (success, duplicate slug, trimming, event publication, repository call
   counts, `UnitOfWork` usage, timestamp preservation), the `Membership`
   aggregate (value objects, role/status transition tables, owner-lock
-  invariants, event emission/ordering, immutability), and the
+  invariants, event emission/ordering, immutability), the
   `Invitation` aggregate (value objects, email normalization, owner-role
   rejection, expiry-at-creation validation, status transition tables,
-  event emission/ordering, immutability) — all against in-memory test
+  event emission/ordering, immutability), and `inviteMember` (success,
+  email normalization, owner-role rejection, duplicate pending
+  invitation, inactive/not-found organization, organizationId mismatch,
+  event publication/suppression, expiry-from-clock computation,
+  repository/`UnitOfWork` call counts) — all against in-memory test
   doubles only.
 
 ## What is intentionally **not** implemented
@@ -166,11 +192,21 @@ What exists today:
   reconciliation, tracked in
   [organization-domain.md](../../docs/modules/organization-domain.md)'s
   non-goals.
-- **Every command except `createOrganization`** (`InviteMember`,
-  `AcceptInvitation`, `UpdateOrganization`, any `Membership` command,
-  …) — none exist. It is also not wired into `createTenancyModule`'s
-  `useCases` — `TenancyUseCases` remains `Record<string, never>` until a
-  future task wires commands into the module factory.
+- **Every command except `createOrganization` and `inviteMember`**
+  (`AcceptInvitation`, `UpdateOrganization`, any `Membership` command,
+  …) — none exist. Neither existing use case is wired into
+  `createTenancyModule`'s `useCases` — `TenancyUseCases` remains
+  `Record<string, never>` until a future task wires commands into the
+  module factory.
+- **Authorization for `inviteMember`.** Nothing checks whether the
+  inviter (`invitedBy`) is actually a member of the organization they're
+  inviting into, or holds a role permitted to invite. See
+  [invite-member-usecase.md](../../docs/modules/invite-member-usecase.md)'s
+  non-goals.
+- **The active-membership check in `inviteMember`.** Section 4 step 2 of
+  the E05-T06 directive is unrepresentable today — `Membership` keys off
+  `userId`, and no email→userId mapping exists anywhere in this codebase.
+  See invite-member-usecase.md's non-goals.
 - **Creating a `Membership` for the requester as owner.**
   `tenancy-contract.md`'s blueprint describes `CreateOrganization` as
   atomically creating the org *and* an owner membership; E05-T03's scope
@@ -210,10 +246,15 @@ What exists today:
 
 ## Next task
 
-**E05-T06**: not yet specified by the founder directive sequence. Not started.
+**E05-T07**: not yet specified by the founder directive sequence. Not started.
 
 ## See also
 
+- [docs/modules/invite-member-usecase.md](../../docs/modules/invite-member-usecase.md) —
+  the `inviteMember` use case's flow, sequence diagram, the
+  client-claimed-`organizationId` check, expiry policy (and the
+  `invitationExpiryHours`-vs-`invitationExpiryDays` config note),
+  duplicate handling, and event mapping.
 - [docs/modules/invitation-domain.md](../../docs/modules/invitation-domain.md) —
   the `Invitation` aggregate's boundaries, role/status models, invariants,
   expiry semantics, event list, and the future-token/ownership-transfer

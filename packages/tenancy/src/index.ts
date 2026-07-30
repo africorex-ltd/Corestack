@@ -77,6 +77,7 @@ export {
   MEMBER_JOINED_EVENT,
   MEMBER_UPDATED_EVENT,
   MEMBER_REMOVED_EVENT,
+  INVITATION_CREATED_EVENT,
 } from "./application/events.js";
 export type {
   OrganizationCreatedPayload,
@@ -85,6 +86,7 @@ export type {
   MemberJoinedPayload,
   MemberUpdatedPayload,
   MemberRemovedPayload,
+  InvitationCreatedPayload,
 } from "./application/events.js";
 
 export type { TenancyConfig, ResolvedTenancyConfig } from "./application/config.js";
@@ -106,3 +108,13 @@ export type {
   CreateOrganizationDeps,
 } from "./application/create-organization.js";
 export { createOrganization } from "./application/create-organization.js";
+
+export { CannotInviteOwnerError } from "./application/cannot-invite-owner-error.js";
+export { InvitationAlreadyExistsError } from "./application/invitation-already-exists-error.js";
+
+export type {
+  InviteMemberCommand,
+  InviteMemberResult,
+  InviteMemberDeps,
+} from "./application/invite-member.js";
+export { inviteMember } from "./application/invite-member.js";

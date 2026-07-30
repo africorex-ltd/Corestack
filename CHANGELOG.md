@@ -1014,6 +1014,55 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   snapshot gate green repo-wide (tenancy 171→254 tests, 13→18 files;
   architecture-fitness unchanged at 36).
 
+- **E05-T06: `inviteMember` use case (2026-07-30).** The second real
+  application service in `@corestack/tenancy`, coordinating the
+  `Organization` aggregate, the `Invitation` aggregate (E05-T05),
+  `OrganizationRepository`, `InvitationRepository`, and `UnitOfWork`
+  event publication — `createOrganization` (E05-T03) is the only other
+  one. `InviteMemberCommand`/`InviteMemberResult` (a DTO, never the
+  aggregate), `CannotInviteOwnerError` (extends `ValidationError`, fails
+  before aggregate construction — defense-in-depth against
+  `Invitation.create`'s own generic rejection), `InvitationAlreadyExistsError`
+  (extends `ConflictError`, returned on a pending duplicate with no
+  aggregate created and no event published). **`ForbiddenError` on a
+  client-claimed `organizationId` mismatch**: `inviteMember` takes
+  `context: OrgScopedContext` as its first parameter (unlike
+  `createOrganization`'s plain `Context` — inviting is inherently
+  org-scoped); `command.organizationId` is parsed then checked for exact
+  equality against `context.organizationId`, and a mismatch is treated
+  as an authorization signal, rejected outright — firmer than E05-T03's
+  still-open `requestedBy`-vs-`context.actor.id` question, because
+  `organizationId` is exactly the value tenant isolation depends on.
+  Added `existsPendingForEmail`/`save` to `InvitationRepository` (takes
+  `OrgScopedContext`, unlike `OrganizationRepository`'s pre-org-scope
+  `existsBySlug`/`save`). Added `tenancyConfigSpec.invitationExpiryDays`
+  (default 7, actually read by `inviteMember` together with an injected
+  `Clock`); the pre-existing `invitationExpiryHours` (E05-T01, default
+  72, never read by any code) is left in place and marked
+  superseded-but-not-removed in `config.ts` — repurposing it would have
+  silently changed a shipped, documented default, which this task was
+  never asked to do. Added `INVITATION_CREATED_EVENT`/
+  `InvitationCreatedPayload` to `application/events.ts` — the first
+  `INVITATION_*` wire contract in the package (E05-T01 defined only
+  organization/member contracts); `role` is typed against the real
+  uppercase `InvitationRole` values, deliberately not perpetuating
+  `MemberJoinedPayload.role`'s lowercase T01 mismatch. **Skipped the
+  active-membership check** (Section 4 step 2 of the founder directive):
+  no `User` aggregate or repository exists anywhere in this codebase to
+  map an invitee's email to a `userId`, so `Membership`'s `userId`-keyed
+  lookup cannot answer "is this email already an active member" —
+  genuinely unrepresentable today, not a shortcut; `InviteMemberDeps` has
+  no `membershipRepository` field. **Does not check whether the inviter
+  is authorized to invite** — no membership/role check on `invitedBy`
+  itself, flagged as an open authorization gap for the HTTP/policy layer
+  or a future task, not silently assumed handled. 15 new tests (1 new
+  file, plus 1 backfilled into the existing `index.test.ts` export smoke
+  test). Full detail:
+  [invite-member-usecase.md](docs/modules/invite-member-usecase.md).
+  Full build/typecheck/lint/test/architecture-fitness/export-snapshot
+  gate green repo-wide (tenancy 254→270 tests, 18→19 files;
+  architecture-fitness unchanged at 36).
+
 <!--
 Template for release-train entries:
 

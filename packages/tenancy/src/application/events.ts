@@ -20,6 +20,14 @@ export const MEMBER_UPDATED_EVENT = "member.updated";
 export const MEMBER_REMOVED_EVENT = "member.removed";
 
 /**
+ * Added in E05-T06, not E05-T01 — `docs/modules/invitation-domain.md`
+ * (E05-T05) flagged that no `INVITATION_*` wire contract existed yet,
+ * unlike `Organization`/`Membership`'s event constants above. This is
+ * the first use case (`inviteMember`) that needs one.
+ */
+export const INVITATION_CREATED_EVENT = "invitation.created";
+
+/**
  * `kind` (`personal`/`team`) was dropped from this shape in E05-T03: the
  * `Organization` aggregate (E05-T02) has no `kind` field — see
  * `docs/modules/organization-domain.md`'s non-goals — so a payload
@@ -58,4 +66,26 @@ export interface MemberUpdatedPayload {
 export interface MemberRemovedPayload {
   readonly organizationId: string;
   readonly membershipId: string;
+}
+
+/**
+ * No `tokenHash`/token field — the `Invitation` aggregate (E05-T05) has
+ * none; see `docs/modules/invitation-domain.md`'s "Future
+ * invitation-token note". `role` is `"ADMIN" | "MEMBER"` (matching
+ * `InvitationRole`'s actual uppercase values exactly), unlike
+ * `MemberJoinedPayload.role` above (lowercase, a T01 artifact predating
+ * the real `MembershipRole` enum) — authored fresh in E05-T06 against
+ * the real aggregate, so it follows the domain model instead of
+ * perpetuating that mismatch. `expiresAt` is a `string` (ISO), not
+ * `Date` — event payloads must be JSON-serializable, and unlike the
+ * envelope's own `occurredAt`, nested payload fields aren't
+ * auto-reconstructed into `Date` on deserialization.
+ */
+export interface InvitationCreatedPayload {
+  readonly invitationId: string;
+  readonly organizationId: string;
+  readonly email: string;
+  readonly role: "ADMIN" | "MEMBER";
+  readonly invitedBy: string;
+  readonly expiresAt: string;
 }

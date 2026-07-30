@@ -56,4 +56,11 @@ describe("@corestack/tenancy compiles and its declared exports resolve", () => {
     expect(typeof tenancy.assertValidInvitationRole).toBe("function");
     expect(typeof tenancy.isLegalInvitationStatusTransition).toBe("function");
   });
+
+  it("exposes the inviteMember use case (E05-T06)", () => {
+    expect(typeof tenancy.inviteMember).toBe("function");
+    expect(typeof tenancy.CannotInviteOwnerError).toBe("function");
+    expect(typeof tenancy.InvitationAlreadyExistsError).toBe("function");
+    expect(tenancy.INVITATION_CREATED_EVENT).toBe("invitation.created");
+  });
 });

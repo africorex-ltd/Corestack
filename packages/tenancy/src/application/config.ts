@@ -27,23 +27,40 @@ import type { EnvSource, ModuleConfigSpec } from "@corestack/platform";
  * them one layer out, at the `EnvSource`, and `resolveTenancyConfig`
  * converts the validated numeric strings into real numbers for command
  * consumption.
+ *
+ * **`invitationExpiryHours` is superseded, not removed (E05-T06).** T01
+ * declared it but nothing ever read it — confirmed by search before this
+ * task added a real consumer. E05-T06's Section 7 asks for a
+ * days-denominated `invitationExpiryDays` field for `inviteMember` to
+ * read; rather than repurposing `invitationExpiryHours` (which would mean
+ * silently changing a documented default — 72 — that this task was never
+ * asked to change) or duplicating the same concern under two names with
+ * one of them live, `invitationExpiryHours` is left exactly as T01 built
+ * it (declared, defaulted, unconsumed) and `invitationExpiryDays` is the
+ * one real code path actually reads. Removing the dead field is out of
+ * scope here — that's a config-surface cleanup, not part of this
+ * use case's Section 2 scope.
  */
 export interface TenancyConfig {
   readonly invitationExpiryHours: string;
+  readonly invitationExpiryDays: string;
   readonly invitationRateLimitPerHour: string;
 }
 
 export interface ResolvedTenancyConfig {
   readonly invitationExpiryHours: number;
+  readonly invitationExpiryDays: number;
   readonly invitationRateLimitPerHour: number;
 }
 
 const INVITATION_EXPIRY_HOURS_ENV_KEY = "TENANCY_INVITATION_EXPIRY_HOURS";
+const INVITATION_EXPIRY_DAYS_ENV_KEY = "TENANCY_INVITATION_EXPIRY_DAYS";
 const INVITATION_RATE_LIMIT_PER_HOUR_ENV_KEY = "TENANCY_INVITATION_RATE_LIMIT_PER_HOUR";
 const POSITIVE_INTEGER_STRING = /^[1-9]\d*$/;
 
 export const DEFAULT_TENANCY_CONFIG: ResolvedTenancyConfig = {
   invitationExpiryHours: 72,
+  invitationExpiryDays: 7,
   invitationRateLimitPerHour: 10,
 };
 
@@ -51,18 +68,21 @@ export const tenancyConfigSpec: ModuleConfigSpec<TenancyConfig> = {
   moduleName: "tenancy",
   schema: z.object({
     invitationExpiryHours: z.string().regex(POSITIVE_INTEGER_STRING, "must be a positive integer"),
+    invitationExpiryDays: z.string().regex(POSITIVE_INTEGER_STRING, "must be a positive integer"),
     invitationRateLimitPerHour: z
       .string()
       .regex(POSITIVE_INTEGER_STRING, "must be a positive integer"),
   }),
   envMapping: {
     invitationExpiryHours: INVITATION_EXPIRY_HOURS_ENV_KEY,
+    invitationExpiryDays: INVITATION_EXPIRY_DAYS_ENV_KEY,
     invitationRateLimitPerHour: INVITATION_RATE_LIMIT_PER_HOUR_ENV_KEY,
   },
 };
 
 /**
  * Wraps an `EnvSource` so `TENANCY_INVITATION_EXPIRY_HOURS` /
+ * `TENANCY_INVITATION_EXPIRY_DAYS` /
  * `TENANCY_INVITATION_RATE_LIMIT_PER_HOUR` fall back to
  * `DEFAULT_TENANCY_CONFIG` when the operator hasn't set them — the
  * composition root passes `withTenancyConfigDefaults(env)` to
@@ -76,6 +96,9 @@ export function withTenancyConfigDefaults(env: EnvSource): EnvSource {
       if (key === INVITATION_EXPIRY_HOURS_ENV_KEY) {
         return String(DEFAULT_TENANCY_CONFIG.invitationExpiryHours);
       }
+      if (key === INVITATION_EXPIRY_DAYS_ENV_KEY) {
+        return String(DEFAULT_TENANCY_CONFIG.invitationExpiryDays);
+      }
       if (key === INVITATION_RATE_LIMIT_PER_HOUR_ENV_KEY) {
         return String(DEFAULT_TENANCY_CONFIG.invitationRateLimitPerHour);
       }
@@ -88,6 +111,7 @@ export function withTenancyConfigDefaults(env: EnvSource): EnvSource {
 export function resolveTenancyConfig(config: TenancyConfig): ResolvedTenancyConfig {
   return {
     invitationExpiryHours: Number(config.invitationExpiryHours),
+    invitationExpiryDays: Number(config.invitationExpiryDays),
     invitationRateLimitPerHour: Number(config.invitationRateLimitPerHour),
   };
 }
