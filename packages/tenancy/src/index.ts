@@ -18,7 +18,31 @@ export type {
   OrganizationDeletedEvent,
 } from "./domain/organization-events.js";
 
-export type { MembershipRecord } from "./domain/membership.js";
+export { Membership } from "./domain/membership.js";
+export type { CreateMembershipInput } from "./domain/membership.js";
+
+export { MembershipId } from "./domain/membership-id.js";
+export { UserId } from "./domain/user-id.js";
+
+export {
+  MembershipRole,
+  isLegalMembershipRoleTransition,
+} from "./domain/membership-role.js";
+export {
+  MembershipStatus,
+  isLegalMembershipStatusTransition,
+} from "./domain/membership-status.js";
+
+export type {
+  MembershipDomainEvent,
+  MembershipCreatedEvent,
+  MembershipPromotedEvent,
+  MembershipDemotedEvent,
+  MembershipSuspendedEvent,
+  MembershipReactivatedEvent,
+  MembershipRemovedEvent,
+} from "./domain/membership-events.js";
+
 export type { InvitationRecord } from "./domain/invitation.js";
 
 export type { OrganizationRepository } from "./application/organization-repository.js";

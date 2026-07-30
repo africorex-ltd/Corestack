@@ -940,6 +940,42 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   snapshot gate green repo-wide (tenancy 79→94 tests; architecture-fitness
   unchanged at 36 — no new package/manifest surface).
 
+- **E05-T04: `Membership` domain model (2026-07-30).** The second real
+  business aggregate, following `Organization` (E05-T02)'s modelling
+  standard exactly. `MembershipId` (own value object), `OrganizationId`
+  (reused from E05-T02 — not reimplemented), and a temporary,
+  tenancy-local `UserId` value object (no `UserId` exists anywhere in
+  `@corestack/kernel`/`@corestack/platform` today, confirmed by search
+  before introducing it; flagged for deletion once a real identity module
+  exists). `MembershipRole` (`OWNER`/`ADMIN`/`MEMBER`) and
+  `MembershipStatus` (`ACTIVE`/`SUSPENDED`/`REMOVED`, `REMOVED` terminal),
+  each with its own transition table as sole source of truth. Explicit
+  methods (`create`/`promoteToAdmin`/`demoteToMember`/`suspend`/
+  `reactivate`/`remove`), domain events
+  (`MembershipCreated`/`Promoted`/`Demoted`/`Suspended`/`Reactivated`/
+  `Removed`) collected via `pullDomainEvents()`/`clearDomainEvents()` — the
+  same local pattern `Organization` established, no shared `AggregateRoot`
+  introduced. **Owner is structurally locked**: the role transition table
+  has no outgoing entries for `OWNER` (cannot be promoted/demoted through
+  this aggregate), and `remove()` checks the role explicitly before
+  consulting the status transition table (cannot be removed regardless of
+  status). Ownership transfer is an explicitly open future use case, not
+  designed here. 77 new tests (5 new files, 75 tests, plus 2 backfilled
+  into the existing `index.test.ts` export smoke test — one for
+  `Membership`, one for `createOrganization`'s exports that E05-T03's own
+  smoke-test update missed): value objects, role/status transition
+  tables, owner-lock invariants, event emission/ordering, immutability.
+  Full detail:
+  [membership-domain.md](docs/modules/membership-domain.md).
+  Mechanically updated `MembershipRepository`'s two methods to return the
+  real `Membership` aggregate instead of the superseded `MembershipRecord`
+  placeholder — the same forced fix `OrganizationRepository` went through
+  in E05-T02. **No repositories (beyond the port-signature fix), no
+  persistence, no RLS, no HTTP, no invitation flows** — explicitly out of
+  scope. Full build/typecheck/lint/test/architecture-fitness/export-
+  snapshot gate green repo-wide (tenancy 94→171 tests, 8→13 files;
+  architecture-fitness unchanged at 36).
+
 <!--
 Template for release-train entries:
 

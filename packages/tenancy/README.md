@@ -38,8 +38,8 @@ and dependency rule as `@corestack/platform` and
 
 ```
 src/
-  domain/          Organization aggregate (E05-T02); Membership/Invitation still placeholders
-  application/     repository ports, event contracts, config spec, module factory
+  domain/          Organization (E05-T02) + Membership (E05-T04) aggregates; Invitation still a placeholder
+  application/     createOrganization use case (E05-T03), repository ports, event contracts, config spec, module factory
   infrastructure/  reserved — Postgres adapters land in E05-T21..T23
   interface/       reserved — HTTP bindings land in E05-T24..T25
   testing/         reserved — adopter-facing fakes land in E05-T28
@@ -52,10 +52,21 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain + application (E05-T02/T03)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04)
 
 What exists today:
 
+- **The `Membership` aggregate** — a pure domain model: `MembershipId`
+  (own value object) + reused `OrganizationId` + a temporary, locally-scoped
+  `UserId` value object; a `MembershipRole` enum (`OWNER`/`ADMIN`/`MEMBER`,
+  `OWNER` structurally locked against downgrade/removal through this
+  aggregate) and a `MembershipStatus` enum (`ACTIVE`/`SUSPENDED`/`REMOVED`,
+  `REMOVED` terminal); explicit methods (`create`/`promoteToAdmin`/
+  `demoteToMember`/`suspend`/`reactivate`/`remove`), domain events
+  collected via `pullDomainEvents()`/`clearDomainEvents()`. No
+  persistence, no I/O, no kernel port dependency. Full detail:
+  [docs/modules/membership-domain.md](../../docs/modules/membership-domain.md).
+  `Invitation` is still a bare placeholder record type.
 - **The `createOrganization` use case** — coordinates the `Organization`
   aggregate, `OrganizationRepository`, and `UnitOfWork` event publication;
   contains no domain rules of its own. Returns
@@ -71,8 +82,6 @@ What exists today:
   collected via `pullDomainEvents()`/`clearDomainEvents()`. No
   persistence, no I/O, no kernel port dependency. Full detail:
   [docs/modules/organization-domain.md](../../docs/modules/organization-domain.md).
-  `Membership`/`Invitation` are still bare placeholder record types
-  (E05-T03/T04).
 - The package itself: manifest, tsconfig, `vitest.config.ts` (the first
   bare one in this repo — see the file's own comment), LICENSE, this
   README.
@@ -80,6 +89,9 @@ What exists today:
   `health()` stub; returns an empty `useCases: {}`.
 - Repository ports (`OrganizationRepository`, `MembershipRepository`,
   `InvitationRepository`) — interfaces only, no persistence.
+  `MembershipRepository`'s two methods were mechanically updated in
+  E05-T04 to return the real `Membership` aggregate instead of the
+  superseded `MembershipRecord` placeholder.
 - Event name constants and payload types
   (`organization.created`/`.updated`/`.deleted`,
   `member.joined`/`.updated`/`.removed`) — types only, no publishing.
@@ -98,21 +110,26 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- 8 test files (94 tests) covering the module scaffold (compilation
+- 13 test files (171 tests) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
-  invariants, event emission/ordering, immutability), and
-  `createOrganization` (success, duplicate slug, trimming, event
-  publication, repository call counts, `UnitOfWork` usage, timestamp
-  preservation) — all against in-memory test doubles only.
+  invariants, event emission/ordering, immutability), `createOrganization`
+  (success, duplicate slug, trimming, event publication, repository call
+  counts, `UnitOfWork` usage, timestamp preservation), and the
+  `Membership` aggregate (value objects, role/status transition tables,
+  owner-lock invariants, event emission/ordering, immutability) — all
+  against in-memory test doubles only.
 
 ## What is intentionally **not** implemented
 
-- **The `Membership`/`Invitation` aggregates.** `src/domain/membership.ts`
-  and `invitation.ts` are still bare placeholder record types with zero
-  invariant enforcement, explicitly marked as such in their own file
-  comments. Ship in **E05-T03/T04**, following the pattern `Organization`
-  (E05-T02) established.
+- **The `Invitation` aggregate.** `src/domain/invitation.ts` is still a
+  bare placeholder record type with zero invariant enforcement,
+  explicitly marked as such in its own file comment.
+- **Ownership transfer.** `Membership` has no method that moves `OWNER`
+  from one membership to another — that requires coordinating two
+  aggregate instances atomically, an application-layer concern. See
+  [membership-domain.md](../../docs/modules/membership-domain.md)'s
+  non-goals.
 - **`Organization`'s `kind` field and the four-state, two-phase-delete
   status machine** (`pending_deletion`/`purged`) from
   `tenancy-contract.md`'s blueprint reference — not modeled by the
@@ -120,23 +137,27 @@ What exists today:
   reconciliation, tracked in
   [organization-domain.md](../../docs/modules/organization-domain.md)'s
   non-goals.
-- **Every other command** (`InviteMember`, `AcceptInvitation`, `UpdateOrganization`,
-  …) — none exist. `createOrganization` is the first and, so far, only one.
-  It is also not wired into `createTenancyModule`'s `useCases` —
-  `TenancyUseCases` remains `Record<string, never>` until a future task
-  wires commands into the module factory.
+- **Every command except `createOrganization`** (`InviteMember`,
+  `AcceptInvitation`, `UpdateOrganization`, any `Membership` command,
+  …) — none exist. It is also not wired into `createTenancyModule`'s
+  `useCases` — `TenancyUseCases` remains `Record<string, never>` until a
+  future task wires commands into the module factory.
 - **Creating a `Membership` for the requester as owner.**
   `tenancy-contract.md`'s blueprint describes `CreateOrganization` as
-  atomically creating the org *and* an owner membership; this task's scope
-  stopped at the `Organization` aggregate. `requestedBy` is captured on
-  the command for this future purpose, unused today.
+  atomically creating the org *and* an owner membership; E05-T03's scope
+  stopped at the `Organization` aggregate, and `Membership` (E05-T04) has
+  no use case wiring it in yet either. `requestedBy` is captured on the
+  command for this future purpose, unused today — and
+  create-organization-usecase.md now flags that `requestedBy` and
+  `context.actor.id` carry the same identity from different trust levels,
+  a decision that future task must resolve.
 - **A hard slug-uniqueness guarantee.** `existsBySlug` is a best-effort,
   friendly-error check — nothing durable prevents two concurrent requests
   for the same slug from both passing it until E05-T21 adds a unique
   index. See create-organization-usecase.md's non-goals.
-- **Repository persistence.** The four port methods (`findById`,
-  `listForContext`, `existsBySlug`, `save`) are declared; no Postgres
-  adapter exists. Lands in **E05-T21–T23**.
+- **Repository persistence.** The port methods across all three
+  repositories are declared; no Postgres adapter exists. Lands in
+  **E05-T21–T23**.
 - **Real health signals.** `health()` always returns `{ status: "healthy"
   }`. Candidate signals (tenancy-schema reachability, a
   `pending_deletion`-past-`purge_after` backlog count) are noted as an open
@@ -160,10 +181,13 @@ What exists today:
 
 ## Next task
 
-**E05-T04**: not yet specified by the founder directive sequence. Not started.
+**E05-T05**: not yet specified by the founder directive sequence. Not started.
 
 ## See also
 
+- [docs/modules/membership-domain.md](../../docs/modules/membership-domain.md) —
+  the `Membership` aggregate's boundaries, role/status models, invariants,
+  event list, and the ownership-transfer non-goal.
 - [docs/modules/create-organization-usecase.md](../../docs/modules/create-organization-usecase.md) —
   the `createOrganization` use case's flow, sequence diagram, validation
   layers, and event mapping.

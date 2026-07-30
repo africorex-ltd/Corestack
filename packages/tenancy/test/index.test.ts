@@ -31,4 +31,19 @@ describe("@corestack/tenancy compiles and its declared exports resolve", () => {
     expect(tenancy.OrganizationStatus.Active).toBe("ACTIVE");
     expect(typeof tenancy.isLegalOrganizationStatusTransition).toBe("function");
   });
+
+  it("exposes the createOrganization use case (E05-T03)", () => {
+    expect(typeof tenancy.createOrganization).toBe("function");
+    expect(typeof tenancy.DuplicateSlugError).toBe("function");
+  });
+
+  it("exposes the Membership aggregate and its value objects (E05-T04)", () => {
+    expect(typeof tenancy.Membership.create).toBe("function");
+    expect(typeof tenancy.MembershipId.from).toBe("function");
+    expect(typeof tenancy.UserId.from).toBe("function");
+    expect(tenancy.MembershipRole.Owner).toBe("OWNER");
+    expect(tenancy.MembershipStatus.Active).toBe("ACTIVE");
+    expect(typeof tenancy.isLegalMembershipRoleTransition).toBe("function");
+    expect(typeof tenancy.isLegalMembershipStatusTransition).toBe("function");
+  });
 });

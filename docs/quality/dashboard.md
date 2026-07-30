@@ -2,29 +2,52 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T03 (`createOrganization`
-> use case) complete**: the first real application service in
-> `@corestack/tenancy` — coordinates the `Organization` aggregate,
-> `OrganizationRepository`, and `UnitOfWork` event publication; contains
-> no domain rules of its own. `CreateOrganizationCommand`/
-> `CreateOrganizationResult` (a DTO, never the aggregate),
-> `DuplicateSlugError`. Whole flow (uniqueness check, aggregate creation,
-> persistence, event publication) runs inside one `UnitOfWork.run()` call;
-> depends on the generic kernel `UnitOfWork`, not `PostgresUnitOfWork` — no
-> infrastructure coupling. Full detail:
+> estimated. Last update: **2026-07-30** — **E05-T04 (`Membership` domain
+> model) complete**: the second real business aggregate, following
+> `Organization` (E05-T02)'s modelling standard exactly. `MembershipId`
+> (own value object), `OrganizationId` (reused, not reimplemented), and a
+> temporary tenancy-local `UserId` value object (no shared identity module
+> exists in this repo — confirmed by search, flagged for deletion once one
+> does). `MembershipRole` (`OWNER`/`ADMIN`/`MEMBER`) and `MembershipStatus`
+> (`ACTIVE`/`SUSPENDED`/`REMOVED`, `REMOVED` terminal), each with its own
+> transition table. Explicit methods (`create`/`promoteToAdmin`/
+> `demoteToMember`/`suspend`/`reactivate`/`remove`), domain events
+> collected via `pullDomainEvents()`/`clearDomainEvents()` — same local
+> pattern as `Organization`, no shared `AggregateRoot`. Owner is
+> structurally locked against promotion/demotion (role transition table
+> has no outgoing `OWNER` entries) and against removal (`remove()` checks
+> the role explicitly before the status table) — ownership transfer is an
+> explicitly open future use case. Full detail:
+> [membership-domain.md](../modules/membership-domain.md). Tenancy package
+> tests 94→171 (+77 — 75 across 5 new files, +2 backfilled into the
+> existing `index.test.ts` smoke test, one of which covers E05-T03's
+> `createOrganization` export that task's own update missed; 8→13 files).
+> Full build/typecheck/lint/test/
+> architecture-fitness/export-snapshot gate green repo-wide
+> (architecture-fitness unchanged at 36). Mechanically updated
+> `MembershipRepository` to return `Membership` instead of the superseded
+> `MembershipRecord` placeholder — the same forced fix
+> `OrganizationRepository` went through in E05-T02. Prior update:
+> **E05-T03 (`createOrganization` use case) complete**: the first real
+> application service in `@corestack/tenancy` — coordinates the
+> `Organization` aggregate, `OrganizationRepository`, and `UnitOfWork`
+> event publication; contains no domain rules of its own.
+> `CreateOrganizationCommand`/`CreateOrganizationResult` (a DTO, never the
+> aggregate), `DuplicateSlugError`. Whole flow (uniqueness check,
+> aggregate creation, persistence, event publication) runs inside one
+> `UnitOfWork.run()` call; depends on the generic kernel `UnitOfWork`, not
+> `PostgresUnitOfWork` — no infrastructure coupling. Full detail:
 > [create-organization-usecase.md](../modules/create-organization-usecase.md).
-> Tenancy package tests 79→94 (+15; 7→8 files). Full build/typecheck/
-> lint/test/architecture-fitness/export-snapshot gate green repo-wide
-> (architecture-fitness unchanged at 36 — no new package/manifest
-> surface). Fixed `OrganizationCreatedPayload` (E05-T01): dropped the
-> `kind` field, which the `Organization` aggregate has no equivalent of
-> and could never actually supply — the wire contract follows the domain
-> model, not the reverse. Two things flagged, not resolved: `existsBySlug`
-> is a best-effort duplicate check, not a durable uniqueness guarantee,
-> until E05-T21 adds a unique index; and `requestedBy`/`requestId` are
-> validated but not yet consumed (no owner `Membership` created, no
-> idempotency wiring) — both are `createOrganization`'s own non-goals, not
-> silent gaps. Prior update: **E05-T02 (Organization domain model)
+> Tenancy package tests 79→94 (+15; 7→8 files). Fixed
+> `OrganizationCreatedPayload` (E05-T01): dropped the `kind` field, which
+> the `Organization` aggregate has no equivalent of and could never
+> actually supply — the wire contract follows the domain model, not the
+> reverse. Two things flagged, not resolved: `existsBySlug` is a
+> best-effort duplicate check, not a durable uniqueness guarantee, until
+> E05-T21 adds a unique index; and `requestedBy`/`requestId` are validated
+> but not yet consumed (no owner `Membership` created, no idempotency
+> wiring) — both are `createOrganization`'s own non-goals, not silent
+> gaps. Prior update: **E05-T02 (Organization domain model)
 > complete**: pure domain aggregate — `OrganizationId`/`OrganizationSlug`
 > value objects, `OrganizationStatus` (3 states, `DELETED` terminal),
 > explicit methods (`create`/`rename`/`suspend`/`reactivate`/`delete`),
@@ -150,7 +173,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 50 files / **459 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 8/94** (up from 7/79 — 1 new test file, `create-organization.test.ts`, 15 tests: success, duplicate slug, trimming, event publication/suppression, repository call counts, `UnitOfWork.run` usage, timestamp preservation, requestId/requestedBy validation). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T03): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T03 added no new package/manifest surface — `duplicate-slug-error.ts`/`create-organization.ts` aren't repository-named) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 55 files / **536 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 13/171** (up from 8/94, +77 — 5 new test files totaling 75: `membership.test.ts` (37 tests: creation, owner invariants, promote/demote, invalid transitions, suspend/reactivate, remove, terminal remove, event emission/ordering, timestamps, immutability), `membership-id.test.ts`/`user-id.test.ts` (10 each), `membership-role.test.ts` (8), `membership-status.test.ts` (10); the remaining 2 were backfilled into the existing `index.test.ts` smoke test, one of which covers E05-T03's `createOrganization` export that task's own update missed). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T04): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T04 added no new package/manifest surface — none of the new `membership*.ts`/`user-id.ts` files are repository-named) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

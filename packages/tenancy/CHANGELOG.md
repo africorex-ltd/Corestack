@@ -48,3 +48,32 @@
   until E05-T21 adds a unique index. No `Membership` creation (the
   contract doc's "org + owner membership atomically" isn't built here).
   Not wired into `createTenancyModule`'s `useCases`.
+
+### `Membership` domain model (E05-T04)
+
+- `Membership` aggregate: pure domain model, no persistence/I/O.
+  `MembershipId` value object (new), `OrganizationId` reused from
+  E05-T02, and a temporary, tenancy-local `UserId` value object (no
+  shared identity module exists in this repo yet — flagged for deletion
+  once one does). `MembershipRole` (`OWNER`/`ADMIN`/`MEMBER`) and
+  `MembershipStatus` (`ACTIVE`/`SUSPENDED`/`REMOVED`, `REMOVED` terminal).
+  Explicit methods (`create`/`promoteToAdmin`/`demoteToMember`/`suspend`/
+  `reactivate`/`remove`), domain events
+  (`MembershipCreated`/`Promoted`/`Demoted`/`Suspended`/`Reactivated`/
+  `Removed`) collected via `pullDomainEvents()`/`clearDomainEvents()`.
+  Full detail:
+  [docs/modules/membership-domain.md](../../docs/modules/membership-domain.md).
+- Owner is structurally locked: cannot be promoted/demoted (the role
+  transition table has no outgoing entries for `OWNER`) and cannot be
+  removed (`remove` checks the role explicitly, before the status
+  transition table). Ownership transfer is an explicitly open, future
+  use case — not implemented.
+- Mechanically updated `MembershipRepository`'s two methods to return
+  `Membership` instead of the superseded `MembershipRecord` placeholder —
+  the same forced fix `OrganizationRepository` went through in E05-T02.
+- 5 new test files, 77 new tests (tenancy package: 94→171 total; 8→13
+  files) — 75 across the new files, plus 2 backfilled into the existing
+  `index.test.ts` export smoke test: one for `Membership`'s exports (this
+  task) and one for `createOrganization`'s exports, which E05-T03's own
+  smoke-test update missed. No repositories, no use cases, no invitation
+  flows — all explicitly out of scope per this task's founder directive.
