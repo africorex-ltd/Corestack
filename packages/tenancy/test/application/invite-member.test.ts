@@ -17,8 +17,11 @@ import type { Invitation } from "../../src/domain/invitation.js";
 import type { Email } from "../../src/domain/email.js";
 import { InvitationRole } from "../../src/domain/invitation-role.js";
 import { InvitationStatus } from "../../src/domain/invitation-status.js";
+import { Membership } from "../../src/domain/membership.js";
+import { MembershipRole } from "../../src/domain/membership-role.js";
 import { CannotInviteOwnerError } from "../../src/application/cannot-invite-owner-error.js";
 import { InvitationAlreadyExistsError } from "../../src/application/invitation-already-exists-error.js";
+import { InviterNotAuthorizedError } from "../../src/application/inviter-not-authorized-error.js";
 import { INVITATION_CREATED_EVENT } from "../../src/application/events.js";
 import {
   inviteMember,
@@ -26,6 +29,7 @@ import {
 } from "../../src/application/invite-member.js";
 import type { OrganizationRepository } from "../../src/application/organization-repository.js";
 import type { InvitationRepository } from "../../src/application/invitation-repository.js";
+import type { MembershipRepository } from "../../src/application/membership-repository.js";
 
 const NOW = new Date("2026-07-30T00:00:00.000Z");
 const ORG_ID = "00000000-0000-7000-8000-000000000099";
@@ -108,6 +112,44 @@ class FakeInvitationRepository implements InvitationRepository {
   }
 }
 
+/** In-memory repository test double for the E05-T07 inviter-authorization check. */
+class FakeMembershipRepository implements MembershipRepository {
+  membership: Membership | null = null;
+  findByUserIdCallCount = 0;
+
+  async findById(): Promise<Membership | null> {
+    return null;
+  }
+
+  async listForOrganization(): Promise<readonly Membership[]> {
+    return [];
+  }
+
+  async findByUserId(): Promise<Membership | null> {
+    this.findByUserIdCallCount += 1;
+    return this.membership;
+  }
+
+  async existsActive(): Promise<boolean> {
+    return false;
+  }
+
+  async save(): Promise<void> {
+    // not called by inviteMember
+  }
+}
+
+/** An ACTIVE membership at the given role for INVITED_BY — the default authorized inviter for most tests. */
+function activeMembership(role: MembershipRole): Membership {
+  return Membership.create({
+    id: "00000000-0000-7000-8000-0000000000aa",
+    organizationId: ORG_ID,
+    userId: INVITED_BY,
+    role,
+    now: NOW,
+  });
+}
+
 function buildHarness() {
   const ids = new SequentialUuidGenerator();
   const clock = new FixedClock(NOW);
@@ -117,6 +159,11 @@ function buildHarness() {
   const uow = new InMemoryUnitOfWork(bus);
   const organizationRepository = new FakeOrganizationRepository();
   const invitationRepository = new FakeInvitationRepository();
+  const membershipRepository = new FakeMembershipRepository();
+  // Default: INVITED_BY is an ACTIVE OWNER, authorized to invite anyone —
+  // most tests aren't exercising the authorization matrix itself (that's
+  // its own describe block below) and shouldn't need to think about it.
+  membershipRepository.membership = activeMembership(MembershipRole.Owner);
   // Explicit correlationId so ids.generate() isn't consumed by createContext
   // itself — keeps the aggregate's id deterministically the first one issued.
   const context: OrgScopedContext = requireOrgScoped(
@@ -126,18 +173,28 @@ function buildHarness() {
     ),
   );
 
-  return { ids, clock, uow, organizationRepository, invitationRepository, context, published };
+  return {
+    ids,
+    clock,
+    uow,
+    organizationRepository,
+    invitationRepository,
+    membershipRepository,
+    context,
+    published,
+  };
 }
 
 describe("inviteMember", () => {
   it("creates a pending invitation on success", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
 
     const result = await inviteMember(context, VALID_COMMAND, {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
@@ -157,13 +214,21 @@ describe("inviteMember", () => {
   });
 
   it("normalizes email casing and surrounding whitespace", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
 
     const result = await inviteMember(
       context,
       { ...VALID_COMMAND, email: "  Invitee@Example.COM  " },
-      { uow, organizationRepository, invitationRepository, ids, clock, invitationExpiryDays: 7 },
+      {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      },
     );
 
     expect(isOk(result)).toBe(true);
@@ -171,13 +236,21 @@ describe("inviteMember", () => {
   });
 
   it("rejects inviting an OWNER with CannotInviteOwnerError, before any aggregate is created", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
 
     const result = await inviteMember(
       context,
       { ...VALID_COMMAND, role: "OWNER" },
-      { uow, organizationRepository, invitationRepository, ids, clock, invitationExpiryDays: 7 },
+      {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      },
     );
 
     expect(isErr(result)).toBe(true);
@@ -187,7 +260,7 @@ describe("inviteMember", () => {
   });
 
   it("returns InvitationAlreadyExistsError when a PENDING invitation already exists for the email, without creating or persisting anything", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
     invitationRepository.pendingEmails.add("invitee@example.com");
 
@@ -195,6 +268,7 @@ describe("inviteMember", () => {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
@@ -207,7 +281,7 @@ describe("inviteMember", () => {
   });
 
   it("rejects inviting into an inactive (SUSPENDED) organization", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
     const suspended = activeOrganization();
     suspended.suspend(NOW);
@@ -217,6 +291,7 @@ describe("inviteMember", () => {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
@@ -229,7 +304,7 @@ describe("inviteMember", () => {
   });
 
   it("returns NotFoundError when the organization does not exist", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
     organizationRepository.organization = null;
 
@@ -237,6 +312,7 @@ describe("inviteMember", () => {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
@@ -249,13 +325,21 @@ describe("inviteMember", () => {
   });
 
   it("rejects a command organizationId that does not match the resolved context (ForbiddenError)", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
 
     const result = await inviteMember(
       context,
       { ...VALID_COMMAND, organizationId: "00000000-0000-7000-8000-000000000001" },
-      { uow, organizationRepository, invitationRepository, ids, clock, invitationExpiryDays: 7 },
+      {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      },
     );
 
     expect(isErr(result)).toBe(true);
@@ -264,13 +348,22 @@ describe("inviteMember", () => {
   });
 
   it("publishes an invitation.created event on success", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context, published } =
-      buildHarness();
+    const {
+      uow,
+      organizationRepository,
+      invitationRepository,
+      membershipRepository,
+      ids,
+      clock,
+      context,
+      published,
+    } = buildHarness();
 
     await inviteMember(context, VALID_COMMAND, {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
@@ -292,14 +385,23 @@ describe("inviteMember", () => {
   });
 
   it("publishes no events when the invitation is a duplicate", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context, published } =
-      buildHarness();
+    const {
+      uow,
+      organizationRepository,
+      invitationRepository,
+      membershipRepository,
+      ids,
+      clock,
+      context,
+      published,
+    } = buildHarness();
     invitationRepository.pendingEmails.add("invitee@example.com");
 
     await inviteMember(context, VALID_COMMAND, {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
@@ -309,20 +411,37 @@ describe("inviteMember", () => {
   });
 
   it("publishes no events when the role is OWNER", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context, published } =
-      buildHarness();
+    const {
+      uow,
+      organizationRepository,
+      invitationRepository,
+      membershipRepository,
+      ids,
+      clock,
+      context,
+      published,
+    } = buildHarness();
 
     await inviteMember(
       context,
       { ...VALID_COMMAND, role: "OWNER" },
-      { uow, organizationRepository, invitationRepository, ids, clock, invitationExpiryDays: 7 },
+      {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      },
     );
 
     expect(published).toHaveLength(0);
   });
 
   it("computes expiresAt from the injected clock and configured invitationExpiryDays", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, context } = buildHarness();
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, context } =
+      buildHarness();
     const fixedNow = new Date("2020-01-01T00:00:00.000Z");
     const clock = new FixedClock(fixedNow);
 
@@ -330,6 +449,7 @@ describe("inviteMember", () => {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 3,
@@ -341,26 +461,28 @@ describe("inviteMember", () => {
     expect(result.value.expiresAt.getTime()).toBe(fixedNow.getTime() + 3 * 24 * 60 * 60 * 1000);
   });
 
-  it("calls findById, existsPendingForEmail, and save exactly once each on success", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+  it("calls findById, findByUserId, existsPendingForEmail, and save exactly once each on success", async () => {
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
 
     await inviteMember(context, VALID_COMMAND, {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
     });
 
     expect(organizationRepository.findByIdCallCount).toBe(1);
+    expect(membershipRepository.findByUserIdCallCount).toBe(1);
     expect(invitationRepository.existsPendingForEmailCallCount).toBe(1);
     expect(invitationRepository.saveCallCount).toBe(1);
   });
 
   it("runs the whole flow through UnitOfWork.run", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
     const runSpy = vi.spyOn(uow, "run");
 
@@ -368,6 +490,7 @@ describe("inviteMember", () => {
       uow,
       organizationRepository,
       invitationRepository,
+      membershipRepository,
       ids,
       clock,
       invitationExpiryDays: 7,
@@ -377,30 +500,209 @@ describe("inviteMember", () => {
   });
 
   it("rejects an empty requestId", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
 
     const result = await inviteMember(
       context,
       { ...VALID_COMMAND, requestId: "" },
-      { uow, organizationRepository, invitationRepository, ids, clock, invitationExpiryDays: 7 },
+      {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      },
     );
 
     expect(isErr(result)).toBe(true);
   });
 
   it("rejects an invalid email", async () => {
-    const { uow, organizationRepository, invitationRepository, ids, clock, context } =
+    const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
       buildHarness();
 
     const result = await inviteMember(
       context,
       { ...VALID_COMMAND, email: "not-an-email" },
-      { uow, organizationRepository, invitationRepository, ids, clock, invitationExpiryDays: 7 },
+      {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      },
     );
 
     expect(isErr(result)).toBe(true);
     if (result.ok) throw new Error("expected err");
     expect(result.error.message).toMatch(/invalid email/);
+  });
+
+  /**
+   * E05-T07 Section 8/9: exhaustive authorization matrix. Each case sets
+   * `membershipRepository.membership` to the inviter's own membership
+   * (or `null` for "no membership at all") and checks the outcome for a
+   * `MEMBER`-target invite, an `ADMIN`-target invite, or both.
+   */
+  describe("inviter authorization (E05-T07 Section 8)", () => {
+    it("OWNER can invite MEMBER", async () => {
+      const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
+        buildHarness();
+      membershipRepository.membership = activeMembership(MembershipRole.Owner);
+
+      const result = await inviteMember(context, VALID_COMMAND, {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      });
+
+      expect(isOk(result)).toBe(true);
+    });
+
+    it("OWNER can invite ADMIN", async () => {
+      const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
+        buildHarness();
+      membershipRepository.membership = activeMembership(MembershipRole.Owner);
+
+      const result = await inviteMember(
+        context,
+        { ...VALID_COMMAND, role: InvitationRole.Admin },
+        { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, invitationExpiryDays: 7 },
+      );
+
+      expect(isOk(result)).toBe(true);
+    });
+
+    it("ADMIN can invite MEMBER", async () => {
+      const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
+        buildHarness();
+      membershipRepository.membership = activeMembership(MembershipRole.Admin);
+
+      const result = await inviteMember(context, VALID_COMMAND, {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      });
+
+      expect(isOk(result)).toBe(true);
+    });
+
+    it("ADMIN cannot invite ADMIN", async () => {
+      const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
+        buildHarness();
+      membershipRepository.membership = activeMembership(MembershipRole.Admin);
+
+      const result = await inviteMember(
+        context,
+        { ...VALID_COMMAND, role: InvitationRole.Admin },
+        { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, invitationExpiryDays: 7 },
+      );
+
+      expect(isErr(result)).toBe(true);
+      if (result.ok) throw new Error("expected err");
+      expect(result.error).toBeInstanceOf(InviterNotAuthorizedError);
+    });
+
+    it("MEMBER cannot invite MEMBER", async () => {
+      const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
+        buildHarness();
+      membershipRepository.membership = activeMembership(MembershipRole.Member);
+
+      const result = await inviteMember(context, VALID_COMMAND, {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      });
+
+      expect(isErr(result)).toBe(true);
+      if (result.ok) throw new Error("expected err");
+      expect(result.error).toBeInstanceOf(InviterNotAuthorizedError);
+    });
+
+    it("a user with no membership at all cannot invite", async () => {
+      const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
+        buildHarness();
+      membershipRepository.membership = null;
+
+      const result = await inviteMember(context, VALID_COMMAND, {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      });
+
+      expect(isErr(result)).toBe(true);
+      if (result.ok) throw new Error("expected err");
+      expect(result.error).toBeInstanceOf(InviterNotAuthorizedError);
+    });
+
+    it("a SUSPENDED OWNER cannot invite", async () => {
+      const { uow, organizationRepository, invitationRepository, membershipRepository, ids, clock, context } =
+        buildHarness();
+      const suspendedOwner = activeMembership(MembershipRole.Owner);
+      suspendedOwner.suspend(NOW);
+      membershipRepository.membership = suspendedOwner;
+
+      const result = await inviteMember(context, VALID_COMMAND, {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      });
+
+      expect(isErr(result)).toBe(true);
+      if (result.ok) throw new Error("expected err");
+      expect(result.error).toBeInstanceOf(InviterNotAuthorizedError);
+    });
+
+    it("publishes no events and does not persist when the inviter is not authorized", async () => {
+      const {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        context,
+        published,
+      } = buildHarness();
+      membershipRepository.membership = activeMembership(MembershipRole.Member);
+
+      await inviteMember(context, VALID_COMMAND, {
+        uow,
+        organizationRepository,
+        invitationRepository,
+        membershipRepository,
+        ids,
+        clock,
+        invitationExpiryDays: 7,
+      });
+
+      expect(published).toHaveLength(0);
+      expect(invitationRepository.saveCallCount).toBe(0);
+    });
   });
 });

@@ -17,6 +17,9 @@ const organizationRepository: OrganizationRepository = {
 const membershipRepository: MembershipRepository = {
   findById: async () => null,
   listForOrganization: async () => [],
+  findByUserId: async () => null,
+  existsActive: async () => false,
+  save: async () => undefined,
 };
 const invitationRepository: InvitationRepository = {
   findById: async () => null,

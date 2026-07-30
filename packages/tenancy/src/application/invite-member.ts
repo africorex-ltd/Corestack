@@ -17,14 +17,18 @@ import { Invitation } from "../domain/invitation.js";
 import { Email } from "../domain/email.js";
 import { OrganizationId } from "../domain/organization-id.js";
 import { UserId } from "../domain/user-id.js";
-import type { InvitationRole } from "../domain/invitation-role.js";
+import { assertValidInvitationRole, type InvitationRole } from "../domain/invitation-role.js";
 import type { InvitationStatus } from "../domain/invitation-status.js";
 import { OrganizationStatus } from "../domain/organization-status.js";
+import { MembershipStatus } from "../domain/membership-status.js";
 import { CannotInviteOwnerError } from "./cannot-invite-owner-error.js";
 import { InvitationAlreadyExistsError } from "./invitation-already-exists-error.js";
+import { InviterNotAuthorizedError } from "./inviter-not-authorized-error.js";
+import { canInviteAs } from "./invite-authorization.js";
 import { INVITATION_CREATED_EVENT, type InvitationCreatedPayload } from "./events.js";
 import type { OrganizationRepository } from "./organization-repository.js";
 import type { InvitationRepository } from "./invitation-repository.js";
+import type { MembershipRepository } from "./membership-repository.js";
 
 export interface InviteMemberCommand {
   readonly organizationId: string;
@@ -52,6 +56,14 @@ export interface InviteMemberDeps {
   readonly uow: UnitOfWork;
   readonly organizationRepository: OrganizationRepository;
   readonly invitationRepository: InvitationRepository;
+  /**
+   * Added in E05-T07 for the inviter-authorization check (Section 8) —
+   * looks up the inviter's own membership via `findByUserId`. Not present
+   * in E05-T06: this use case had no membership dependency at all until
+   * this task closed the "does the inviter have permission to invite"
+   * gap flagged in `docs/modules/invite-member-usecase.md`'s non-goals.
+   */
+  readonly membershipRepository: MembershipRepository;
   readonly ids: IdGenerator;
   readonly clock: Clock;
   /**
@@ -86,16 +98,30 @@ function addDays(date: Date, days: number): Date {
 }
 
 /**
- * The `InviteMember` use case (E05-T06) — the second real application
- * service in `@corestack/tenancy`. Coordinates the `Organization`
- * (existence/status check only — no mutation), `Membership` (see the
- * skipped-check note below), and `Invitation` (E05-T05) aggregates
- * through `OrganizationRepository`/`InvitationRepository` and
- * `UnitOfWork` event publication, exactly like `createOrganization`
- * (E05-T03) coordinates `Organization` alone. Contains no domain rules of
- * its own — every invariant (email format, owner-role lock, expiry-in-
- * the-future, the status machine) lives in `Invitation` and its value
- * objects.
+ * The `InviteMember` use case (E05-T06, authorization added E05-T07) —
+ * the second real application service in `@corestack/tenancy`.
+ * Coordinates the `Organization` (existence/status check only — no
+ * mutation), `Membership` (the inviter's own, for authorization — see
+ * Section 8 below; the invitee's is deliberately not checked, see the
+ * skipped-check note further down), and `Invitation` (E05-T05) aggregates
+ * through `OrganizationRepository`/`MembershipRepository`/
+ * `InvitationRepository` and `UnitOfWork` event publication, exactly like
+ * `createOrganization` (E05-T03) coordinates `Organization` alone.
+ * Contains no domain rules of its own — every invariant (email format,
+ * owner-role lock, expiry-in-the-future, the status machine) lives in
+ * `Invitation` and its value objects; the inviter-authorization matrix
+ * (`canInviteAs`, `invite-authorization.ts`) is orchestration logic, not a
+ * domain rule of any aggregate.
+ *
+ * **E05-T07 Section 8 closes an authorization gap this use case's own
+ * E05-T06 documentation flagged explicitly**: until this task, any caller
+ * holding a valid `OrgScopedContext` for an organization could invite
+ * into it regardless of their own membership or role. Now the inviter's
+ * own `ACTIVE` membership is looked up (`membershipRepository.findByUserId`)
+ * and checked against `canInviteAs`: only `OWNER`/`ADMIN` may invite,
+ * `ADMIN` may not invite another `ADMIN`, and nobody may invite `OWNER`
+ * (already excluded earlier via `CannotInviteOwnerError`, so
+ * `canInviteAs`'s own `OWNER` rejection is defense-in-depth here too).
  *
  * **Never trusts a client-claimed `organizationId` for tenant scoping**
  * (`docs/security/how-to-build-a-tenant-safe-feature.md`, step 1): the
@@ -129,6 +155,7 @@ export async function inviteMember(
     | ConflictError
     | CannotInviteOwnerError
     | InvitationAlreadyExistsError
+    | InviterNotAuthorizedError
   >
 > {
   return deps.uow.run(async (tx) => {
@@ -166,6 +193,13 @@ export async function inviteMember(
       return err(new CannotInviteOwnerError());
     }
 
+    // Validated here (not just deferred to Invitation.create) so the
+    // E05-T07 authorization check below has a properly-typed InvitationRole
+    // to pass to canInviteAs, rather than an unchecked raw string.
+    const roleResult = tryDomain(() => assertValidInvitationRole(command.role));
+    if (!roleResult.ok) return roleResult;
+    const role = roleResult.value;
+
     const invitedByResult = tryDomain(() => UserId.from(command.invitedBy.trim()));
     if (!invitedByResult.ok) return invitedByResult;
     const invitedBy = invitedByResult.value;
@@ -198,14 +232,33 @@ export async function inviteMember(
       );
     }
 
-    // Section 4 step 2 (active-membership check) is deliberately skipped
-    // here: Membership keys off userId, not email, and no email->userId
-    // directory (no User aggregate/repository) exists anywhere in this
-    // codebase. "Verify ... if the repository can determine it" (Section
-    // 4) is the directive's own out for exactly this case — see
-    // docs/modules/invite-member-usecase.md's non-goals for the full
-    // reasoning. No new method was added to MembershipRepository for
-    // this; `deps` deliberately has no `membershipRepository` field.
+    // Section 4 step 2 (active-membership check for the invitee) is
+    // deliberately skipped here: Membership keys off userId, not email,
+    // and no email->userId directory (no User aggregate/repository)
+    // exists anywhere in this codebase. "Verify ... if the repository can
+    // determine it" (Section 4) is the directive's own out for exactly
+    // this case — see docs/modules/invite-member-usecase.md's non-goals
+    // for the full reasoning. This is unrelated to the inviter-
+    // authorization check immediately below: that one looks up the
+    // *inviter's* membership (keyed by userId, which the inviter's own id
+    // already is), not the invitee's.
+
+    // E05-T07 Section 8: the inviter must have a role that permits
+    // inviting the requested target role. Closes the authorization gap
+    // E05-T06 flagged explicitly: until this task, any caller holding a
+    // valid OrgScopedContext for an organization could invite into it
+    // regardless of their own membership or role.
+    const inviterMembership = await deps.membershipRepository.findByUserId(
+      context,
+      invitedBy.value,
+    );
+    if (
+      inviterMembership === null ||
+      inviterMembership.status !== MembershipStatus.Active ||
+      !canInviteAs(inviterMembership.role, role)
+    ) {
+      return err(new InviterNotAuthorizedError(invitedBy.value, organizationId.value, role));
+    }
 
     // Section 4 step 3 / Section 5: duplicate-pending-invitation check.
     const alreadyPending = await deps.invitationRepository.existsPendingForEmail(context, email);
@@ -219,7 +272,7 @@ export async function inviteMember(
         id: deps.ids.generate(),
         organizationId: organizationId.value,
         email: email.value,
-        role: command.role,
+        role,
         invitedBy: invitedBy.value,
         now,
         expiresAt: addDays(now, deps.invitationExpiryDays),

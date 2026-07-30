@@ -21,6 +21,18 @@ import type { Invitation } from "../domain/invitation.js";
  * the same "necessary repository interaction, not a full adapter"
  * addition `existsBySlug`/`save` were for `OrganizationRepository` in
  * E05-T03.
+ *
+ * **E05-T07 deliberately does not add a `findPendingById` method**, even
+ * though the founder directive suggested one: `acceptInvitation` needs to
+ * distinguish `InvitationNotFoundError` (no such invitation) from
+ * `InvitationNotPendingError` (invitation exists, but is `ACCEPTED`/
+ * `REVOKED`/already `EXPIRED`) — two different error types Section 2
+ * requires as separate exports. A method that pre-filters to `PENDING`
+ * only (returning `null` for both "doesn't exist" and "exists but not
+ * pending") would make those two cases indistinguishable from inside the
+ * use case. The existing `findById` above already returns the invitation
+ * regardless of status, which is exactly what's needed — `acceptInvitation`
+ * inspects `.status` itself. Nothing was added to this port for E05-T07.
  */
 export interface InvitationRepository {
   findById(context: OrgScopedContext, invitationId: string): Promise<Invitation | null>;

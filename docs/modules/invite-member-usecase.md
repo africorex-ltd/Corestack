@@ -264,20 +264,21 @@ pattern.
   `MembershipRepository` to fake a partial version of it, and
   `InviteMemberDeps` deliberately has no `membershipRepository` field at
   all.
-- **Authorization — is the inviter permitted to invite?** This use case
-  checks that `command.invitedBy` parses as a valid `UserId`, and that
-  `command.organizationId` matches the resolved `context` (see "Never
-  trust a client-claimed `organizationId`" above) — but it never checks
-  whether `invitedBy` is actually a member of the organization it's
-  inviting into, let alone holds a role (`OWNER`/`ADMIN`) permitted to
-  send invitations. As written, any caller holding a valid
-  `OrgScopedContext` for organization X can invite into organization X
-  regardless of their own membership or role. Unlike the active-membership
-  check above, this is not unrepresentable with what exists today —
-  `MembershipRepository.listForOrganization` could answer "is `invitedBy`
-  a member here" — it is simply not wired into this use case, and is
-  expected to be enforced at the HTTP/policy layer or a dedicated future
-  task, not silently assumed handled here.
+- ~~**Authorization — is the inviter permitted to invite?**~~ **Resolved
+  in E05-T07.** This gap (any caller holding a valid `OrgScopedContext`
+  could invite regardless of their own membership or role) is now closed:
+  `inviteMember` looks up the inviter's own `ACTIVE` membership via
+  `membershipRepository.findByUserId` and checks it against `canInviteAs`
+  (only `OWNER`/`ADMIN` may invite, `ADMIN` may not invite `ADMIN`,
+  nobody may invite `OWNER`), returning `InviterNotAuthorizedError` on
+  failure. See
+  [accept-invitation-usecase.md](accept-invitation-usecase.md)'s
+  "Authorization matrix" for the full rule and
+  `packages/tenancy/src/application/invite-authorization.ts` for the
+  implementation. This document's own flow/sequence-diagram sections
+  above predate E05-T07 and describe the E05-T06 shape only — they are
+  left as the historical record of what E05-T06 itself shipped, not
+  updated to reflect T07's addition.
 - **A hard duplicate-invitation guarantee** — see "Duplicate handling"
   above; E05-T21's job.
 - **`requestId` propagation** — validated for presence only, same

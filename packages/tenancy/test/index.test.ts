@@ -63,4 +63,16 @@ describe("@corestack/tenancy compiles and its declared exports resolve", () => {
     expect(typeof tenancy.InvitationAlreadyExistsError).toBe("function");
     expect(tenancy.INVITATION_CREATED_EVENT).toBe("invitation.created");
   });
+
+  it("exposes the acceptInvitation use case and inviter-authorization helper (E05-T07)", () => {
+    expect(typeof tenancy.acceptInvitation).toBe("function");
+    expect(typeof tenancy.canInviteAs).toBe("function");
+    expect(typeof tenancy.InviterNotAuthorizedError).toBe("function");
+    expect(typeof tenancy.InvitationNotFoundError).toBe("function");
+    expect(typeof tenancy.InvitationExpiredError).toBe("function");
+    expect(typeof tenancy.InvitationNotPendingError).toBe("function");
+    expect(typeof tenancy.MembershipAlreadyExistsError).toBe("function");
+    expect(tenancy.INVITATION_ACCEPTED_EVENT).toBe("invitation.accepted");
+    expect(tenancy.INVITATION_EXPIRED_EVENT).toBe("invitation.expired");
+  });
 });

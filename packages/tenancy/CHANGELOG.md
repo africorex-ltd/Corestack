@@ -166,3 +166,67 @@
   18→19 files). No repository adapters, no SQL, no RLS, no migrations,
   no HTTP handlers, no email delivery, no invitation acceptance — all
   explicitly out of scope per this task's founder directive.
+
+### `acceptInvitation` use case + `inviteMember` authorization (E05-T07)
+
+- The third real application service: `acceptInvitation`, the
+  membership-admission workflow. Coordinates the `Invitation` and
+  `Membership` aggregates, `InvitationRepository`, `MembershipRepository`,
+  and `UnitOfWork` event publication. `AcceptInvitationCommand`/
+  `AcceptInvitationResult` (a DTO, never either aggregate),
+  `InvitationNotFoundError` (extends `NotFoundError`),
+  `InvitationExpiredError`/`InvitationNotPendingError`/
+  `MembershipAlreadyExistsError` (extend `ConflictError`),
+  `InviterNotAuthorizedError` (extends `ForbiddenError`, consumed by
+  `inviteMember` — see below). 15 new tests, in-memory test doubles
+  only. Full detail:
+  [docs/modules/accept-invitation-usecase.md](../../docs/modules/accept-invitation-usecase.md).
+- **Expiry enforcement moved to acceptance time.** `Invitation.expire()`
+  (E05-T05) never compares `now` against `expiresAt` itself —
+  `acceptInvitation` is the first caller that does. Discovering an
+  expiry is not a no-op rejection: the `EXPIRED` transition is persisted
+  and its event published *before* `InvitationExpiredError` is returned,
+  since the invitation's stored state must reflect what actually
+  happened.
+- **Identity check, not authentication.** The accepting user's claimed
+  email (`command.email`) is checked for equality against the
+  invitation's own; `command.userId` and `command.email` are trusted
+  application inputs, not verified against any session or auth system
+  (none exists in this codebase, and Section 13 explicitly prohibits
+  introducing one). A mismatch returns a bare `ForbiddenError` — no
+  sixth error type was added beyond Section 2's explicit five.
+- **`inviteMember` gains inviter authorization** (Section 8): a new
+  `canInviteAs(inviterRole, targetRole)` helper
+  (`invite-authorization.ts`) encodes the matrix — `OWNER` can invite
+  `ADMIN`/`MEMBER`, `ADMIN` can invite `MEMBER` only, nobody can invite
+  `OWNER`. `inviteMember` now takes a `membershipRepository` dependency,
+  looks up the inviter's own membership via the new
+  `MembershipRepository.findByUserId`, and requires it to be `ACTIVE` —
+  a judgment call, since Section 3 only says "must have OWNER or ADMIN
+  membership" without specifying status. This closes the authorization
+  gap E05-T06's own documentation flagged as open.
+- Added `MembershipRepository.findByUserId`/`existsActive`/`save`
+  (E05-T07) — the same "necessary repository interaction, not a full
+  adapter" shape `existsBySlug`/`save` were for `OrganizationRepository`
+  in E05-T03.
+- **Deliberately did not add `InvitationRepository.findPendingById`**
+  despite the founder directive suggesting one: `acceptInvitation` needs
+  the invitation's actual status to distinguish `InvitationNotFoundError`
+  from `InvitationNotPendingError` — a pending-filtered lookup would make
+  the two indistinguishable. The existing `findById` (any status,
+  E05-T05) is what's used instead.
+- Added `INVITATION_ACCEPTED_EVENT`/`InvitationAcceptedPayload` and
+  `INVITATION_EXPIRED_EVENT`/`InvitationExpiredPayload` to
+  `application/events.ts`. **Fixed `MemberJoinedPayload.role`** from a
+  lowercase T01-era placeholder (`"owner" | "admin" | "member"`) to the
+  real, uppercase `MembershipRole` values — `acceptInvitation` is the
+  first use case to actually publish `MEMBER_JOINED_EVENT`, so this
+  changes no shipped behavior, following the exact precedent
+  `InvitationCreatedPayload.role` set in E05-T06.
+- 2 new test files (1 new — `accept-invitation.test.ts`, 15 tests; 1
+  extended — `invite-member.test.ts`, +8 authorization-matrix tests),
+  plus 1 backfilled into the existing `index.test.ts` export smoke test
+  (tenancy package: 270→294 total; 19→20 files). No repository adapters,
+  no SQL, no RLS, no migrations, no HTTP handlers, no email delivery, no
+  invitation tokens, no `User`/`Session`/`Auth` module — all explicitly
+  out of scope per this task's founder directive.

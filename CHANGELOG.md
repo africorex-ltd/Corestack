@@ -1063,6 +1063,55 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   gate green repo-wide (tenancy 254→270 tests, 18→19 files;
   architecture-fitness unchanged at 36).
 
+- **E05-T07: `acceptInvitation` use case + `inviteMember` authorization
+  (2026-07-30).** The third real application service in
+  `@corestack/tenancy`: `acceptInvitation`, the membership-admission
+  workflow, coordinating the `Invitation` and `Membership` aggregates,
+  `InvitationRepository`, `MembershipRepository`, and `UnitOfWork` event
+  publication. `AcceptInvitationCommand`/`AcceptInvitationResult` (a DTO,
+  never either aggregate), `InvitationNotFoundError`,
+  `InvitationExpiredError`, `InvitationNotPendingError`,
+  `MembershipAlreadyExistsError`, `InviterNotAuthorizedError` (the last
+  consumed by `inviteMember`, not `acceptInvitation` — see below).
+  **Expiry enforcement moved to acceptance time**: `Invitation.expire()`
+  (E05-T05) never compares `now` against `expiresAt` itself —
+  `acceptInvitation` is the first caller that does, and discovering an
+  expiry is not a no-op rejection: the `EXPIRED` transition is persisted
+  and its event published *before* `InvitationExpiredError` is returned.
+  **Identity check, not authentication**: the accepting user's claimed
+  email is checked against the invitation's own; `userId`/`email` are
+  trusted application inputs (Section 13 explicitly prohibits
+  introducing a `User`/`Session`/`Auth` module), and a mismatch returns a
+  bare `ForbiddenError` rather than a sixth dedicated error type beyond
+  Section 2's explicit five. **`inviteMember` gains inviter
+  authorization** (Section 8): a new `canInviteAs(inviterRole,
+  targetRole)` helper encodes the matrix — `OWNER` can invite
+  `ADMIN`/`MEMBER`, `ADMIN` can invite `MEMBER` only, nobody can invite
+  `OWNER` — closing the authorization gap E05-T06's own documentation
+  flagged as open (any caller with a valid `OrgScopedContext` could
+  previously invite regardless of their own membership or role).
+  `inviteMember` now requires the inviter's own membership to be
+  `ACTIVE`, a judgment call since Section 3 only specifies role, not
+  status. Added `MembershipRepository.findByUserId`/`existsActive`/
+  `save`. **Deliberately did not add `InvitationRepository.findPendingById`**
+  despite the founder directive suggesting one — `acceptInvitation` needs
+  the invitation's actual status to distinguish "not found" from "not
+  pending," which a pending-filtered lookup would make indistinguishable;
+  the existing `findById` (E05-T05) is used instead. Added
+  `INVITATION_ACCEPTED_EVENT`/`INVITATION_EXPIRED_EVENT` wire contracts.
+  **Fixed `MemberJoinedPayload.role`** from a lowercase T01-era
+  placeholder to the real, uppercase `MembershipRole` values —
+  `acceptInvitation` is the first use case to actually publish
+  `MEMBER_JOINED_EVENT`, so this changes no shipped behavior, following
+  the exact precedent `InvitationCreatedPayload.role` set in E05-T06.
+  24 new tests (1 new file — `accept-invitation.test.ts`, 15 tests; 1
+  extended — `invite-member.test.ts`, +8 authorization-matrix tests; 1
+  backfilled into `index.test.ts`). Full detail:
+  [accept-invitation-usecase.md](docs/modules/accept-invitation-usecase.md).
+  Full build/typecheck/lint/test/architecture-fitness/export-snapshot
+  gate green repo-wide (tenancy 270→294 tests, 19→20 files;
+  architecture-fitness unchanged at 36).
+
 <!--
 Template for release-train entries:
 

@@ -78,6 +78,8 @@ export {
   MEMBER_UPDATED_EVENT,
   MEMBER_REMOVED_EVENT,
   INVITATION_CREATED_EVENT,
+  INVITATION_ACCEPTED_EVENT,
+  INVITATION_EXPIRED_EVENT,
 } from "./application/events.js";
 export type {
   OrganizationCreatedPayload,
@@ -87,6 +89,8 @@ export type {
   MemberUpdatedPayload,
   MemberRemovedPayload,
   InvitationCreatedPayload,
+  InvitationAcceptedPayload,
+  InvitationExpiredPayload,
 } from "./application/events.js";
 
 export type { TenancyConfig, ResolvedTenancyConfig } from "./application/config.js";
@@ -111,6 +115,8 @@ export { createOrganization } from "./application/create-organization.js";
 
 export { CannotInviteOwnerError } from "./application/cannot-invite-owner-error.js";
 export { InvitationAlreadyExistsError } from "./application/invitation-already-exists-error.js";
+export { InviterNotAuthorizedError } from "./application/inviter-not-authorized-error.js";
+export { canInviteAs } from "./application/invite-authorization.js";
 
 export type {
   InviteMemberCommand,
@@ -118,3 +124,15 @@ export type {
   InviteMemberDeps,
 } from "./application/invite-member.js";
 export { inviteMember } from "./application/invite-member.js";
+
+export { InvitationNotFoundError } from "./application/invitation-not-found-error.js";
+export { InvitationExpiredError } from "./application/invitation-expired-error.js";
+export { InvitationNotPendingError } from "./application/invitation-not-pending-error.js";
+export { MembershipAlreadyExistsError } from "./application/membership-already-exists-error.js";
+
+export type {
+  AcceptInvitationCommand,
+  AcceptInvitationResult,
+  AcceptInvitationDeps,
+} from "./application/accept-invitation.js";
+export { acceptInvitation } from "./application/accept-invitation.js";

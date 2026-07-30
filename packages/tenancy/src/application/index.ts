@@ -10,6 +10,8 @@ export {
   MEMBER_UPDATED_EVENT,
   MEMBER_REMOVED_EVENT,
   INVITATION_CREATED_EVENT,
+  INVITATION_ACCEPTED_EVENT,
+  INVITATION_EXPIRED_EVENT,
 } from "./events.js";
 export type {
   OrganizationCreatedPayload,
@@ -19,6 +21,8 @@ export type {
   MemberUpdatedPayload,
   MemberRemovedPayload,
   InvitationCreatedPayload,
+  InvitationAcceptedPayload,
+  InvitationExpiredPayload,
 } from "./events.js";
 
 export type { TenancyConfig, ResolvedTenancyConfig } from "./config.js";
@@ -43,6 +47,8 @@ export { createOrganization } from "./create-organization.js";
 
 export { CannotInviteOwnerError } from "./cannot-invite-owner-error.js";
 export { InvitationAlreadyExistsError } from "./invitation-already-exists-error.js";
+export { InviterNotAuthorizedError } from "./inviter-not-authorized-error.js";
+export { canInviteAs } from "./invite-authorization.js";
 
 export type {
   InviteMemberCommand,
@@ -50,3 +56,15 @@ export type {
   InviteMemberDeps,
 } from "./invite-member.js";
 export { inviteMember } from "./invite-member.js";
+
+export { InvitationNotFoundError } from "./invitation-not-found-error.js";
+export { InvitationExpiredError } from "./invitation-expired-error.js";
+export { InvitationNotPendingError } from "./invitation-not-pending-error.js";
+export { MembershipAlreadyExistsError } from "./membership-already-exists-error.js";
+
+export type {
+  AcceptInvitationCommand,
+  AcceptInvitationResult,
+  AcceptInvitationDeps,
+} from "./accept-invitation.js";
+export { acceptInvitation } from "./accept-invitation.js";

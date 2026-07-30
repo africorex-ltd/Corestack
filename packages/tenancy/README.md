@@ -45,7 +45,7 @@ and dependency rule as `@corestack/platform` and
 ```
 src/
   domain/          Organization (E05-T02) + Membership (E05-T04) + Invitation (E05-T05) aggregates
-  application/     createOrganization (E05-T03) + inviteMember (E05-T06) use cases, repository ports, event contracts, config spec, module factory
+  application/     createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases, repository ports, event contracts, config spec, module factory
   infrastructure/  reserved — Postgres adapters land in E05-T21..T23
   interface/       reserved — HTTP bindings land in E05-T24..T25
   testing/         reserved — adopter-facing fakes land in E05-T28
@@ -58,22 +58,45 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07)
 
 What exists today:
 
+- **The `acceptInvitation` use case** — the membership-admission
+  workflow: verifies the invitation exists and is `PENDING`
+  (`InvitationNotFoundError`/`InvitationNotPendingError`), enforces
+  expiry at acceptance time (`InvitationExpiredError` — persisting the
+  `EXPIRED` transition and publishing its event even on this failing
+  path), checks the accepting user's claimed email against the
+  invitation's own (`ForbiddenError` on mismatch), verifies no duplicate
+  active membership (`MembershipAlreadyExistsError`), then atomically
+  creates a `Membership` and marks the invitation `ACCEPTED` inside one
+  `UnitOfWork`, publishing `member.joined` and `invitation.accepted`.
+  Returns
+  `Result<AcceptInvitationResult, ValidationError | ForbiddenError |
+  InvitationNotFoundError | InvitationExpiredError |
+  InvitationNotPendingError | MembershipAlreadyExistsError>` — a DTO,
+  never either aggregate. Full detail:
+  [docs/modules/accept-invitation-usecase.md](../../docs/modules/accept-invitation-usecase.md).
+  No repository adapter, no SQL, no RLS, no HTTP, no email delivery, no
+  invitation tokens — in-memory test doubles only, same as
+  `createOrganization`/`inviteMember`.
 - **The `inviteMember` use case** — coordinates the `Organization`,
-  `Invitation`, and (deliberately not) `Membership` concepts:
+  `Invitation`, and (as of E05-T07) the inviter's own `Membership`:
   `ForbiddenError` on a client-claimed `organizationId` mismatch,
   `CannotInviteOwnerError` before aggregate creation,
+  `InviterNotAuthorizedError` when the inviter lacks an `ACTIVE`
+  `OWNER`/`ADMIN` membership permitted to invite the target role
+  (`canInviteAs`, E05-T07 Section 8 — closes the authorization gap this
+  same doc flagged as open after E05-T06),
   `InvitationAlreadyExistsError` on a pending duplicate, an
   application-level expiry policy (`invitationExpiryDays`, injected
   clock), and event publication through `UnitOfWork` via the first
   `INVITATION_*` wire contract. Returns
   `Result<InviteMemberResult, ValidationError | ForbiddenError |
   NotFoundError | ConflictError | CannotInviteOwnerError |
-  InvitationAlreadyExistsError>` — a DTO, never the aggregate. Full
-  detail:
+  InvitationAlreadyExistsError | InviterNotAuthorizedError>` — a DTO,
+  never the aggregate. Full detail:
   [docs/modules/invite-member-usecase.md](../../docs/modules/invite-member-usecase.md).
   No repository adapter, no SQL, no RLS, no HTTP, no email delivery, no
   invitation acceptance — in-memory test doubles only, same as
@@ -129,11 +152,23 @@ What exists today:
   forced fix `OrganizationRepository` went through in E05-T02.
   `InvitationRepository` gained two more methods in E05-T06
   (`existsPendingForEmail`, `save`) to support `inviteMember`.
+  `MembershipRepository` gained three more in E05-T07 (`findByUserId`,
+  `existsActive`, `save`) to support `inviteMember`'s authorization check
+  and `acceptInvitation`'s duplicate-membership check/persistence.
+  `InvitationRepository` deliberately did **not** gain a `findPendingById`
+  method in E05-T07 despite the founder directive suggesting one — the
+  existing `findById` (any status) is what `acceptInvitation` actually
+  needs, since it must distinguish "not found" from "found but not
+  pending," which a pending-filtered lookup couldn't. See
+  [accept-invitation-usecase.md](../../docs/modules/accept-invitation-usecase.md).
 - Event name constants and payload types
   (`organization.created`/`.updated`/`.deleted`,
-  `member.joined`/`.updated`/`.removed`, `invitation.created` — the last
-  added in E05-T06, the first `INVITATION_*` wire contract) — types only
-  except `invitation.created`, which `inviteMember` actually publishes.
+  `member.joined`/`.updated`/`.removed`, `invitation.created`/
+  `.accepted`/`.expired` — the last three added across E05-T06/T07, the
+  first `INVITATION_*` wire contracts) — `MemberJoinedPayload.role` was
+  fixed from a lowercase T01 placeholder to the real, uppercase
+  `MembershipRole` values in E05-T07, the first task to actually publish
+  it.
 - `tenancyConfigSpec` — a real `ModuleConfigSpec` with three fields
   (invitation expiry in hours — superseded, unread; invitation expiry in
   days — added E05-T06, actually read by `inviteMember`; invitation rate
@@ -151,7 +186,7 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- 19 test files (270 tests) covering the module scaffold (compilation
+- 20 test files (294 tests) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -161,12 +196,17 @@ What exists today:
   invariants, event emission/ordering, immutability), the
   `Invitation` aggregate (value objects, email normalization, owner-role
   rejection, expiry-at-creation validation, status transition tables,
-  event emission/ordering, immutability), and `inviteMember` (success,
+  event emission/ordering, immutability), `inviteMember` (success,
   email normalization, owner-role rejection, duplicate pending
   invitation, inactive/not-found organization, organizationId mismatch,
   event publication/suppression, expiry-from-clock computation,
-  repository/`UnitOfWork` call counts) — all against in-memory test
-  doubles only.
+  repository/`UnitOfWork` call counts, plus an exhaustive E05-T07
+  inviter-authorization matrix), and `acceptInvitation` (success at both
+  `ADMIN`/`MEMBER` roles, invitation not found, email mismatch,
+  not-pending for accepted/revoked, expiry enforcement with persistence
+  and event assertions, duplicate active membership, event
+  publication, `UnitOfWork` usage) — all against in-memory test doubles
+  only.
 
 ## What is intentionally **not** implemented
 
@@ -192,21 +232,33 @@ What exists today:
   reconciliation, tracked in
   [organization-domain.md](../../docs/modules/organization-domain.md)'s
   non-goals.
-- **Every command except `createOrganization` and `inviteMember`**
-  (`AcceptInvitation`, `UpdateOrganization`, any `Membership` command,
-  …) — none exist. Neither existing use case is wired into
-  `createTenancyModule`'s `useCases` — `TenancyUseCases` remains
-  `Record<string, never>` until a future task wires commands into the
-  module factory.
-- **Authorization for `inviteMember`.** Nothing checks whether the
-  inviter (`invitedBy`) is actually a member of the organization they're
-  inviting into, or holds a role permitted to invite. See
-  [invite-member-usecase.md](../../docs/modules/invite-member-usecase.md)'s
-  non-goals.
+- **Every command except `createOrganization`, `inviteMember`, and
+  `acceptInvitation`** (`UpdateOrganization`, `RevokeInvitation`, any
+  other `Membership` command, …) — none exist. None of the three
+  existing use cases is wired into `createTenancyModule`'s `useCases` —
+  `TenancyUseCases` remains `Record<string, never>` until a future task
+  wires commands into the module factory.
 - **The active-membership check in `inviteMember`.** Section 4 step 2 of
   the E05-T06 directive is unrepresentable today — `Membership` keys off
   `userId`, and no email→userId mapping exists anywhere in this codebase.
-  See invite-member-usecase.md's non-goals.
+  See invite-member-usecase.md's non-goals. (Authorization — *is the
+  inviter permitted to invite* — is a separate concern from this one and
+  was resolved in E05-T07; see below.)
+- **Re-authorizing an invitation at acceptance time.** `acceptInvitation`
+  honors an invitation's role as-issued; it does not re-run
+  `canInviteAs` against the original inviter's *current* membership.
+  Authorization is a creation-time concern only. See
+  [accept-invitation-usecase.md](../../docs/modules/accept-invitation-usecase.md)'s
+  "Membership creation" section.
+- **Identity verification in `acceptInvitation`.** The accepting user's
+  email is checked for equality against the invitation's own, but neither
+  it nor the accepting `userId` is authenticated — no `User`/session/auth
+  module exists in this codebase, and Section 13 explicitly prohibits
+  introducing one here. See accept-invitation-usecase.md's "Trust
+  assumptions".
+- **A hard duplicate-membership guarantee in `acceptInvitation`.**
+  `existsActive` is a best-effort check, same shape as
+  `existsBySlug`/`existsPendingForEmail` — E05-T21's job to make durable.
 - **Creating a `Membership` for the requester as owner.**
   `tenancy-contract.md`'s blueprint describes `CreateOrganization` as
   atomically creating the org *and* an owner membership; E05-T03's scope
@@ -246,10 +298,14 @@ What exists today:
 
 ## Next task
 
-**E05-T07**: not yet specified by the founder directive sequence. Not started.
+**E05-T08**: not yet specified by the founder directive sequence. Not started.
 
 ## See also
 
+- [docs/modules/accept-invitation-usecase.md](../../docs/modules/accept-invitation-usecase.md) —
+  the `acceptInvitation` use case's flow, sequence diagram, the
+  authorization matrix (shared with `inviteMember`), expiry enforcement,
+  membership creation, event flow, and trust assumptions around identity.
 - [docs/modules/invite-member-usecase.md](../../docs/modules/invite-member-usecase.md) —
   the `inviteMember` use case's flow, sequence diagram, the
   client-claimed-`organizationId` check, expiry policy (and the
