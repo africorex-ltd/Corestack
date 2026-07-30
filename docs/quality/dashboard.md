@@ -2,7 +2,19 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-29** (**E03 COMPLETE** — 21 of 22 tasks;
+> estimated. Last update: **2026-07-30** — **E05 Readiness Gate complete,
+> verdict GO** (full report:
+> [e05-readiness-gate-report.md](../engineering/e05-readiness-gate-report.md);
+> friction log:
+> [e05-readiness-friction-log.md](../engineering/e05-readiness-friction-log.md);
+> tenancy contract:
+> [tenancy-contract.md](../modules/tenancy-contract.md); alpha release prep
+> under `docs/releases/v0.1.0-alpha.1-*`, prepared not published). Export-
+> surface snapshot gap closed (5/5 conditions gated); 3 of 4 previously-
+> unproven contract suites gained mutation proof (`UnitOfWork` deliberately
+> deferred, reasoned); `CONTRIBUTING.md` now links the mandatory tenant-
+> safety guide and corrects a stale Docker-only integration-test claim.
+> Prior update: **2026-07-29** (**E03 COMPLETE** — 21 of 22 tasks;
 > outbox epic T02-T03, T10-T14 done; Infrastructure Consolidation pass complete;
 > migrated local dev/test to PostgreSQL 18 — see
 > [postgres-18-compatibility.md](../platform/postgres-18-compatibility.md);

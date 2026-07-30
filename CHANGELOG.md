@@ -799,6 +799,59 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   ports (not yet published).
 - Monorepo, CI design, and governance established.
 
+- **E05 Readiness Gate (2026-07-30) — verdict GO.** A pre-implementation
+  audit of whether the platform is ready to support the first real
+  business module (`@corestack/tenancy`), triggered before any E05 code is
+  written. Full report:
+  [e05-readiness-gate-report.md](docs/engineering/e05-readiness-gate-report.md).
+  Closed the export-surface snapshot gap the E04 audit named: kernel's
+  `api-surface.test.ts` now covers `./testing` alongside the main entry;
+  platform gains a new `api-surface.test.ts` covering `.`, `./postgres`,
+  and `./testing` — all 5 declared export conditions across both packages
+  are now gated. Reviewed the 4 contract suites lacking mutation proof
+  (Cache, RateLimiter, Encrypter, UnitOfWork): added targeted broken-
+  fixture proofs for 3 (`NeverExpiringCache`, `LexicographicRateLimiter` —
+  reproducing E03-T41's real string-comparison bug in pure JS,
+  `FixedIvEncrypter`), each following the `ReverseOrderEventBus` pattern;
+  `UnitOfWork` deliberately deferred with written rationale (no plausible
+  "silent mistake" fixture shape exists for its assertions, unlike the
+  other three). Kernel 111→114 tests, platform unit 194→197.
+
+- **E05 readiness friction log**
+  ([e05-readiness-friction-log.md](docs/engineering/e05-readiness-friction-log.md)):
+  a simulated 14-step module build found 2 blocking-grade gaps (no module
+  scaffold generator anywhere in the repo — a contributor's only path is
+  hand-copying `examples/acme-crm-module`; and no bridge from
+  `buildTenantIsolationDdl()` to an actual migration file — every module's
+  RLS DDL is hand-transcribed with no automated cross-check against the
+  canonical generator), 4 real-but-survivable items, and 8 steps with no
+  friction found. Both blocking items are judged non-gating for E05's
+  start (the scaffold gap is precisely what E05-T01 exists to resolve; the
+  RLS-DDL bridge is a decision for Tenancy's own migration task, not this
+  gate, to make).
+
+- **Tenancy module contract** (`docs/modules/tenancy-contract.md`): the
+  future public contract of `@corestack/tenancy` — aggregates, commands,
+  events, repositories, purge semantics, RLS requirements, config surface,
+  and extension points — grounded directly in the E05 blueprint's 30 task
+  rows, written before any implementation code, per Section 10's new
+  permanent policy that every module begins with a contract document.
+
+- **Alpha release prep** (`docs/releases/v0.1.0-alpha.1-*`, prepared, not
+  published — `RELEASE_ENABLED` stays off pending npm org/token): release
+  notes, a GitHub release draft, a contributor onboarding checklist, and a
+  maintainer release checklist. The maintainer checklist surfaces a real
+  gap: only one changeset exists in `.changeset/` today, covering a much
+  earlier kernel surface than what would actually ship — flagged for
+  reconciliation before any real publish, not silently ignored.
+
+- **`CONTRIBUTING.md` fixes:** now links the mandatory
+  `how-to-build-a-tenant-safe-feature.md` guide and the golden-path
+  example (previously absent from the project's own front-door doc), and
+  corrects a stale claim that `test:integration` requires Docker — the
+  dual-mode bootstrap has supported a local `DATABASE_URL` path since the
+  Infrastructure Consolidation pass.
+
 <!--
 Template for release-train entries:
 

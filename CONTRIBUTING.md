@@ -30,8 +30,17 @@ release mechanics in [docs/engineering/09-release-versioning.md](docs/engineerin
 ```bash
 pnpm install
 pnpm build && pnpm test          # unit + application (< 30 s budget)
-pnpm test:integration            # needs Docker (Testcontainers)
+pnpm test:integration            # needs a local Postgres via DATABASE_URL, or Docker (Testcontainers) — see docs/testing/testcontainers-readiness.md
 ```
+
+If your change touches tenant-owned data (most application-layer work
+does), read
+[docs/security/how-to-build-a-tenant-safe-feature.md](docs/security/how-to-build-a-tenant-safe-feature.md)
+first — it's mandatory, not optional — and study
+[examples/acme-crm-module](examples/acme-crm-module) as the worked
+example. See
+[docs/releases/contributor-onboarding-checklist.md](docs/releases/contributor-onboarding-checklist.md)
+for the full first-day checklist.
 
 Pick a `flag:good-first-issue` if you're new — each one has a named mentor.
 Comment to claim it; don't sit on claims > a week.
