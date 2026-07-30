@@ -5,13 +5,20 @@ import type { Organization } from "../domain/organization.js";
 import type { OrganizationSlug } from "../domain/organization-slug.js";
 
 /**
- * Port only — no persistence implementation (E05-T21 builds the Postgres
- * adapter). Method signatures are provisional: `docs/modules/tenancy-
+ * Port only — no persistence implementation yet (E05-T09 froze the
+ * database shape; a later task builds the Postgres adapter). See
+ * `docs/modules/tenancy-schema-design.md`'s "Repository persistence
+ * expectations" section for the transactional/uniqueness/concurrency
+ * contract this port's eventual adapter must satisfy, and its "RLS
+ * attachment points" section for the still-open `organizations` RLS
+ * question referenced just below.
+ *
+ * Method signatures are provisional: `docs/modules/tenancy-
  * contract.md`'s own "RLS requirements" section flags `organizations` as
  * an open question — is it a normal org-scoped table, or does its RLS
  * policy need a membership-join condition instead, since a row *is* an
  * organization rather than something scoped *to* one? That decision
- * belongs to E05-T21, not this scaffold. `OrgScopedContext` is used here
+ * belongs to a future RLS task, not this scaffold. `OrgScopedContext` is used here
  * to satisfy the org-scoping discipline structurally (a caller must have
  * resolved *some* organization context to call this port) without
  * pre-deciding how `organizations` itself will be scoped at the database

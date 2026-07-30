@@ -1150,6 +1150,56 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   architecture-fitness unchanged at 36; export-snapshot unchanged — no
   new public exports).
 
+- **E05-T09: Tenancy Postgres schema design (2026-07-30).** Freezes the
+  tenancy database shape before any repository adapter is built. New
+  `src/infrastructure/postgres/schema/` (internal — no `./postgres`
+  package export yet): Drizzle table definitions for
+  `tenancy.organizations`/`tenancy.memberships`/`tenancy.invitations`.
+  `drizzle-orm` added as an optional peer + dev dependency, mirroring the
+  `postgres`-driver precedent already in `@corestack/platform`'s
+  `package.json` — this is the "first module repository adapter" moment
+  [ADR-0017](docs/adr/0017-drizzle-deferred-to-first-module-repository.md)
+  anticipated. **[ADR-0023](docs/adr/0023-tenancy-schema-text-enum-with-check-constraint.md):**
+  enum-shaped columns are CHECK-constrained `text`, not native Postgres
+  `ENUM` types, reconciling the founder directive's "database enums"
+  wording with `DATABASE.md` §1 rule 5's existing text+CHECK decision —
+  each column's value set is sourced directly from the matching domain
+  enum constant, so a renamed value is a compile error in the schema
+  file. Two partial unique indexes encode the state-dependent uniqueness
+  rules: `memberships_active_org_user_key` (at most one `ACTIVE`
+  membership per organization+user) and
+  `invitations_pending_org_email_key` (at most one `PENDING` invitation
+  per organization+email) — verified empirically, not just asserted, that
+  both partial-index `WHERE` predicates and all `CHECK` constraints
+  render as literal SQL with no bind-parameter placeholder.
+  `organizations` uses a plain, non-partial `UNIQUE(slug)`, unlike
+  `tenancy-contract.md`'s 4-state blueprint — the implemented 3-state
+  `Organization` model has no `purged` state to key a partial index off
+  of. No `version`/optimistic-concurrency column on any table (flagged as
+  an open concurrency-expectations gap, not silently added or ignored).
+  No DB-side `.defaultNow()` on any creation timestamp — every aggregate
+  always supplies its own instant, and a DB-computed fallback could
+  silently desynchronize a row from the same instant already published on
+  its creation event. Repository persistence expectations (transactional
+  boundaries, uniqueness, concurrency, eventual consistency) documented
+  against all three existing ports, with a one-line cross-reference added
+  to each port's own doc comment — no new port methods added. RLS
+  attachment points documented, not implemented: `memberships`/
+  `invitations` attach the platform's existing `buildTenantIsolationDdl`
+  (E03-T30) with no open question; `organizations` is flagged as needing
+  a real design decision, deferred explicitly to a future RLS task. 23
+  new schema tests (no live database —
+  `drizzle-orm/pg-core`'s `getTableConfig` introspection only). Full
+  detail: [tenancy-schema-design.md](docs/modules/tenancy-schema-design.md)
+  and
+  [tenancy-persistence-mapping.md](docs/modules/tenancy-persistence-mapping.md).
+  No repository adapters, no SQL queries, no RLS policies, no migrations
+  beyond these schema definitions, no HTTP handlers. Full
+  build/typecheck/lint/test/architecture-fitness/export-snapshot gate
+  green repo-wide (tenancy 307→330 tests, 21→22 files; architecture-
+  fitness unchanged at 36; export-snapshot unchanged — no new public
+  exports).
+
 <!--
 Template for release-train entries:
 

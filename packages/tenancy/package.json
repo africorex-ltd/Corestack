@@ -48,8 +48,17 @@
     "@corestack/platform": "workspace:*",
     "zod": "^3.25.0"
   },
+  "peerDependencies": {
+    "drizzle-orm": "^0.45.2"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@corestack/tsconfig": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   }

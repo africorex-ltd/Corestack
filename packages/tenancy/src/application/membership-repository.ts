@@ -3,7 +3,11 @@ import type { OrgScopedContext } from "@corestack/platform";
 import type { Membership } from "../domain/membership.js";
 
 /**
- * Port only — no persistence implementation (E05-T21). Unlike
+ * Port only — no persistence implementation yet (E05-T09 froze the
+ * database shape; a later task builds the Postgres adapter). See
+ * `docs/modules/tenancy-schema-design.md`'s "Repository persistence
+ * expectations" section for the transactional/uniqueness/concurrency
+ * contract the eventual adapter must satisfy. Unlike
  * `OrganizationRepository`, memberships are unambiguously org-scoped rows
  * (`organization_id` on every row), so the standard `OrgScopedContext`
  * pattern applies directly with no open question.

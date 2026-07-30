@@ -2,7 +2,41 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T08 (Tenancy workflow
+> estimated. Last update: **2026-07-30** — **E05-T09 (Tenancy Postgres
+> schema design) complete**: freezes the tenancy database shape before any
+> repository adapter is built. New `src/infrastructure/postgres/schema/`
+> (internal, no `./postgres` package export yet): Drizzle table
+> definitions for `tenancy.organizations`/`tenancy.memberships`/
+> `tenancy.invitations`. `drizzle-orm` added as an optional peer + dev
+> dependency — the "first module repository adapter" moment
+> [ADR-0017](../adr/0017-drizzle-deferred-to-first-module-repository.md)
+> anticipated. **[ADR-0023](../adr/0023-tenancy-schema-text-enum-with-check-constraint.md):**
+> enum-shaped columns are CHECK-constrained `text`, not native Postgres
+> `ENUM` types, sourced directly from each domain enum constant so a
+> renamed value is a compile error in the schema file. Two partial unique
+> indexes encode the state-dependent uniqueness rules (one `ACTIVE`
+> membership per org+user; one `PENDING` invitation per org+email) —
+> verified empirically that both `WHERE` predicates and all `CHECK`
+> constraints render as literal SQL with no bind parameter. `organizations`
+> uses a plain `UNIQUE(slug)` (the implemented 3-state model has no
+> `purged` state to key a partial index off of, unlike the 4-state
+> blueprint). No `version` column on any table and no DB-side
+> `.defaultNow()` on creation timestamps — both flagged explicitly rather
+> than silently added or omitted. Repository persistence expectations
+> (transactional/uniqueness/concurrency/eventual-consistency) documented
+> against all three existing ports with a cross-reference added to each
+> port's own doc comment — no new port methods. RLS attachment points
+> documented, not implemented: `memberships`/`invitations` need no new
+> mechanism (`buildTenantIsolationDdl`, E03-T30); `organizations` is
+> flagged as needing a real design decision, deferred to a future RLS
+> task. 23 new no-live-database schema tests. Full detail:
+> [tenancy-schema-design.md](../modules/tenancy-schema-design.md) and
+> [tenancy-persistence-mapping.md](../modules/tenancy-persistence-mapping.md).
+> Tenancy package tests 307→330 (+23, 1 new file; 21→22 files). Full
+> build/typecheck/lint/test/architecture-fitness/export-snapshot gate
+> green repo-wide (architecture-fitness unchanged at 36; export-snapshot
+> unchanged — no new public exports this task). Prior update:
+> **2026-07-30** — **E05-T08 (Tenancy workflow
 > integration harness) complete**: an in-memory harness validating the
 > full create → invite → accept workflow across repositories,
 > `UnitOfWork`, and event publication before any persistence adapter
@@ -303,7 +337,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 63 files / **672 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 21/307** (up from 20/294, +13 — 1 new test file, `test/workflow/tenancy-workflow.test.ts`: happy-path create→invite→accept with exact event-sequence assertions, duplicate slug, duplicate pending invitation, expired invitation, revoked invitation, the full inviter-authorization matrix, exactly-once invitation consumption/membership creation, and three transaction-semantics tests including the mid-flow-throw proof of no storage rollback). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T08): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T08 added no new package/manifest surface) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 64 files / **695 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 22/330** (up from 21/307, +23 — 1 new test file, `test/infrastructure/schema.test.ts`: schema builds, column not-null/primary-key shape, enum values match the domain enums exactly, unique/partial-unique indexes and foreign keys exist, no bind-parameter placeholder in any CHECK/partial-index expression, no `token_hash` column on `invitations`). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T09): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T09 added no new package/manifest surface) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

@@ -274,3 +274,75 @@
   no HTTP handlers, no new repository port methods, no performance
   tuning, no dependency-injection framework — all explicitly out of
   scope per this task's founder directive.
+
+### Postgres schema design (E05-T09)
+
+- New `src/infrastructure/postgres/schema/` (internal — no `./postgres`
+  export condition in `package.json` yet, since no repository adapter
+  exists to export): Drizzle table definitions for `tenancy.organizations`/
+  `tenancy.memberships`/`tenancy.invitations`, freezing the database shape
+  before any adapter is built. `drizzle-orm` added as a peer + dev
+  dependency, following the exact `postgres`-driver precedent already
+  established in `@corestack/platform`'s `package.json` — optional peer,
+  so the main `.` entry point never pulls it in. Full detail:
+  [docs/modules/tenancy-schema-design.md](../../docs/modules/tenancy-schema-design.md)
+  and
+  [docs/modules/tenancy-persistence-mapping.md](../../docs/modules/tenancy-persistence-mapping.md).
+- **[ADR-0023](../../docs/adr/0023-tenancy-schema-text-enum-with-check-constraint.md):**
+  enum-shaped columns (`status`/`role`) are CHECK-constrained `text`, not
+  native Postgres `ENUM` types — reconciling the founder directive's
+  "create database enums" wording with `DATABASE.md` §1 rule 5's existing
+  "text + CHECK constraint, not native Postgres enums" decision. Each
+  column's value set is sourced directly from the same domain enum
+  constant object the aggregate already exports, so a renamed domain
+  value breaks the schema file at compile time.
+- **Two partial unique indexes** encode the state-dependent uniqueness
+  rules Section 5/6 asked for: `memberships_active_org_user_key` (at most
+  one `ACTIVE` membership per `(organization_id, user_id)`) and
+  `invitations_pending_org_email_key` (at most one `PENDING` invitation
+  per `(organization_id, email)`). Verified empirically (not just
+  asserted) that both partial-index `WHERE` predicates and all three
+  `CHECK` constraints render as literal SQL text with no bind-parameter
+  placeholder — a schema test recursively confirms no `Param` node
+  appears in any of these expression trees.
+- **`organizations` uses a plain, non-partial `UNIQUE(slug)`** — unlike
+  `tenancy-contract.md`'s 4-state blueprint (`PUX slug WHERE status <>
+  'purged'`), the implemented 3-state `Organization` model has no
+  `purged` state to key a partial index off of; a `DELETED`
+  organization's slug stays taken today. Flagged as a schema migration
+  this document anticipates, not resolves, should the 4-state
+  reconciliation land later.
+- **No `version`/optimistic-concurrency column on any of the three
+  tables** — none of the three aggregates carries one today. Documented
+  as an open concurrency-expectations gap (not silently added or
+  silently ignored) in the schema-design doc.
+- **No DB-side `.defaultNow()` on any creation timestamp**
+  (`created_at`/`joined_at`) — unlike `DATABASE.md`'s general "default
+  `now()`" guidance, every aggregate always supplies its own creation
+  instant, and a DB-computed fallback could silently desynchronize a row
+  from the same instant already published on its creation event; omitting
+  the default keeps every insert obligated to supply the real value, the
+  same discipline already applied to ids (no `.defaultRandom()`).
+- **Repository persistence expectations documented, not new methods
+  added**: reviewed all three existing repository ports against this
+  schema and added a one-line cross-reference in each port's own doc
+  comment to `tenancy-schema-design.md`'s "Repository persistence
+  expectations" section (transactional boundaries, uniqueness
+  expectations — the three `exists*` best-effort checks each get a real
+  constraint backstop once a live adapter exists — concurrency
+  expectations, eventual consistency expectations).
+- **RLS attachment points documented, not implemented**: `memberships`/
+  `invitations` attach the platform's existing `buildTenantIsolationDdl`
+  (E03-T30) with no open question; `organizations` is flagged as the one
+  case needing a real design decision (key the policy off `id` directly,
+  or a membership-join condition) — deferred explicitly to a future RLS
+  task, not decided here.
+- 23 new schema tests (`test/infrastructure/schema.test.ts`, no live
+  database — `getTableConfig` introspection only): schema builds, column
+  not-null/primary-key shape, enum values match the domain enums exactly,
+  unique/partial-unique indexes and foreign keys exist, no `token_hash`
+  column on `invitations` (tenancy package: 307→330 total tests; 21→22
+  files). No repository adapters, no SQL queries, no RLS policies, no
+  migrations beyond these schema definitions, no HTTP handlers — all
+  explicitly out of scope per this task's founder directive. No new
+  public exports — the schema module is internal to the package.

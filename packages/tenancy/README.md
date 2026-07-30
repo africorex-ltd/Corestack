@@ -44,12 +44,12 @@ and dependency rule as `@corestack/platform` and
 
 ```
 src/
-  domain/          Organization (E05-T02) + Membership (E05-T04) + Invitation (E05-T05) aggregates
-  application/     createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases, repository ports, event contracts, config spec, module factory
-  infrastructure/  reserved — Postgres adapters land in E05-T21..T23
-  interface/       reserved — HTTP bindings land in E05-T24..T25
-  testing/         reserved — adopter-facing fakes land in E05-T28
-test-support/      in-memory repositories + workflow harness + event collector (E05-T08) — internal, project-only; not exported, not adopter-facing
+  domain/                     Organization (E05-T02) + Membership (E05-T04) + Invitation (E05-T05) aggregates
+  application/                createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases, repository ports, event contracts, config spec, module factory
+  infrastructure/postgres/schema/  Drizzle table definitions (E05-T09) — schema only, no adapter yet; not exported via package.json (no `./postgres` condition until a real adapter exists)
+  interface/                  reserved — HTTP bindings land in E05-T24..T25
+  testing/                    reserved — adopter-facing fakes land in E05-T28
+test-support/                 in-memory repositories + workflow harness + event collector (E05-T08) — internal, project-only; not exported, not adopter-facing
 ```
 
 `test-support/` (sibling to `test/`, outside `src/`) and the reserved
@@ -68,10 +68,33 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09)
 
 What exists today:
 
+- **The Postgres persistence schema** (`src/infrastructure/postgres/schema/`,
+  E05-T09) — Drizzle table definitions for `organizations`/`memberships`/
+  `invitations`, freezing the database shape before any repository
+  adapter is built. Enum-shaped columns (`status`/`role`) are
+  CHECK-constrained `text`, not native Postgres `ENUM` types
+  ([ADR-0023](../../docs/adr/0023-tenancy-schema-text-enum-with-check-constraint.md)),
+  with each column's value set sourced directly from the matching domain
+  enum constant so a renamed value breaks the schema file at compile
+  time. Two partial unique indexes encode the state-dependent uniqueness
+  rules: at most one `ACTIVE` membership per `(organization_id,
+  user_id)`, and at most one `PENDING` invitation per `(organization_id,
+  email)`. `organizations` uses a plain (non-partial) `UNIQUE(slug)` —
+  unlike `tenancy-contract.md`'s 4-state blueprint, the implemented
+  3-state `Organization` model has no `purged` state to key a partial
+  index off of. No repository methods, no SQL migrations beyond the
+  schema definitions, no RLS policies (comments mark exactly where a
+  future RLS task attaches, including the still-open `organizations`
+  question `OrganizationRepository`'s own port doc already flagged).
+  `drizzle-orm` is a peer + dev dependency only, not re-exported from any
+  package entry point yet. Full detail:
+  [docs/modules/tenancy-schema-design.md](../../docs/modules/tenancy-schema-design.md)
+  and
+  [docs/modules/tenancy-persistence-mapping.md](../../docs/modules/tenancy-persistence-mapping.md).
 - **The Tenancy workflow integration harness** (`test-support/`, E05-T08)
   — `InMemoryOrganizationRepository`/`MembershipRepository`/
   `InvitationRepository` (copy-on-write storage, implementing the real
@@ -214,7 +237,7 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- 21 test files (307 tests) covering the module scaffold (compilation
+- 22 test files (330 tests) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -235,7 +258,9 @@ What exists today:
   and event assertions, duplicate active membership, event
   publication, `UnitOfWork` usage) — all against in-memory test doubles
   only — plus the 13 end-to-end workflow tests described above
-  (E05-T08).
+  (E05-T08) and 23 no-live-database schema tests (E05-T09) verifying the
+  Drizzle schema builds, enum values match the domain enums exactly, and
+  the expected unique/partial-unique indexes and foreign keys exist.
 
 ## What is intentionally **not** implemented
 
@@ -327,13 +352,24 @@ What exists today:
 
 ## Next task
 
-**E05-T09**: not yet specified by the founder directive sequence. Not started.
-Per Section 13 of the E05-T08 directive, Postgres persistence/RLS/
-migrations/Drizzle schemas/HTTP handlers are explicitly **not** to be
-started until an E05-T09 prompt arrives.
+**E05-T10**: not yet specified by the founder directive sequence. Not
+started. Per Section 17 of the E05-T09 directive, repository
+implementation and RLS policies are explicitly **not** to be started
+until an E05-T10 prompt arrives.
 
 ## See also
 
+- [docs/modules/tenancy-schema-design.md](../../docs/modules/tenancy-schema-design.md) —
+  the Postgres schema design (E05-T09): ER diagram, index/partial-index
+  rationale, deletion strategy, membership/invitation uniqueness
+  strategy, repository persistence expectations (transactional/
+  uniqueness/concurrency), RLS attachment points for a future task
+  (including the still-open `organizations` question), and non-goals.
+- [docs/modules/tenancy-persistence-mapping.md](../../docs/modules/tenancy-persistence-mapping.md) —
+  the field-by-field mapping from each aggregate to its Postgres row.
+- [docs/adr/0023-tenancy-schema-text-enum-with-check-constraint.md](../../docs/adr/0023-tenancy-schema-text-enum-with-check-constraint.md) —
+  why enum-shaped columns are CHECK-constrained `text`, not native
+  Postgres `ENUM` types.
 - [docs/modules/tenancy-workflow-integration.md](../../docs/modules/tenancy-workflow-integration.md) —
   the in-memory workflow harness (E05-T08): repository behavior, event
   capture, a full happy-path sequence diagram, transaction-semantics

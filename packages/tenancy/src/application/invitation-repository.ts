@@ -4,7 +4,11 @@ import type { Email } from "../domain/email.js";
 import type { Invitation } from "../domain/invitation.js";
 
 /**
- * Port only — no persistence implementation (E05-T21). Org-scoped like
+ * Port only — no persistence implementation yet (E05-T09 froze the
+ * database shape; a later task builds the Postgres adapter). See
+ * `docs/modules/tenancy-schema-design.md`'s "Repository persistence
+ * expectations" section for the transactional/uniqueness/concurrency
+ * contract the eventual adapter must satisfy. Org-scoped like
  * `MembershipRepository` — every invitation belongs to exactly one
  * organization. `PreviewInvitation`'s public, unauthenticated lookup (by
  * raw token, not by org context) is deliberately not modeled here: that
