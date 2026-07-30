@@ -225,3 +225,54 @@ deferring:**
    migration is written, since Tenancy is exactly the kind of module where
    getting this DDL subtly wrong would be a real security issue, not a
    cosmetic one.
+
+## Confirmed finding (not simulated): `ModuleConfigSpec` cannot express an
+optional or coerced config field
+
+Found while actually building `@corestack/tenancy`'s `tenancyConfigSpec`
+(E05-T01, Section 5) — the first module to need a numeric, defaulted
+config value, closing exactly the gap step 3 above predicted ("no doc
+showed a module's config schema actually wired end-to-end"). This is an
+empirical result, verified with an isolated `tsc --noEmit
+--exactOptionalPropertyTypes` check against three schema shapes, not a
+guess:
+
+- `z.object({ a: z.string().optional() })` assigned to `ZodType<{ a?:
+  string }>` — **fails.** Under `exactOptionalPropertyTypes: true`, an
+  optional zod field's inferred type is `{ a?: string | undefined }`,
+  which is not assignable to `{ a?: string }`.
+- `z.object({ a: z.coerce.number().optional() })` assigned to `ZodType<{
+  a?: number }>` — **fails**, same reason plus the `_input` mismatch
+  coercion introduces (`unknown` vs the declared `number`).
+- `z.object({ a: z.string() })` (required, no optional, no coerce) —
+  **passes.** This is exactly `acme-crm-module`'s `welcomeMessage:
+  z.string().min(1)` shape, which is why the one existing exercise of
+  `ModuleConfigSpec` never hit this.
+
+Root cause: `config-validation.ts`'s `ModuleConfigSpec<T>.schema` is typed
+`ZodType<T>`, which defaults to `ZodType<T, ZodTypeDef, T>` — Input and
+Output both fixed to `T`. `loadModuleConfig` always calls
+`spec.schema.safeParse(raw)` where `raw: Record<string, unknown>` built
+from raw env-var strings, so the schema's declared Input type has no
+runtime effect — the constraint is stricter at compile time than the
+framework needs at runtime, and it silently forecloses any field that
+needs a default or a string→number conversion, which is most numeric
+config in practice.
+
+**Resolution applied (module-scoped, not a platform change):** Tenancy's
+config fields are typed as required strings, validated with a
+`z.string().regex(...)`, matching the one shape that actually
+type-checks. Defaulting happens one layer out, via a
+`withTenancyConfigDefaults(env: EnvSource): EnvSource` wrapper (falls back
+to the documented default when a key is absent); numeric conversion
+happens after validation, via `resolveTenancyConfig`. See
+`packages/tenancy/src/application/config.ts` for the full implementation
+and reasoning.
+
+**Left open, on purpose:** whether `ModuleConfigSpec<T>.schema`'s type
+should be relaxed (e.g. to `ZodType<T, ZodTypeDef, unknown>`, since Input
+is never actually used at runtime) is a platform-level decision with its
+own blast radius across every future module's config spec — out of scope
+for a module scaffold task. Recorded here so the next module that hits
+this doesn't have to re-derive it, and so a future platform task can
+decide deliberately rather than by accretion.

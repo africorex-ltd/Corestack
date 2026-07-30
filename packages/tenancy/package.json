@@ -1,0 +1,56 @@
+{
+  "name": "@corestack/tenancy",
+  "version": "0.0.1",
+  "description": "CoreStack tenancy module: organizations, memberships, and invitations — the platform's unit of tenancy, and the module template every later module copies.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/africorex-ltd/Corestack.git",
+    "directory": "packages/tenancy"
+  },
+  "homepage": "https://github.com/africorex-ltd/Corestack/tree/main/packages/tenancy#readme",
+  "bugs": "https://github.com/africorex-ltd/Corestack/issues",
+  "keywords": [
+    "corestack",
+    "saas",
+    "tenancy",
+    "organizations",
+    "multi-tenant"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run test/integration --testTimeout 60000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@corestack/kernel": "workspace:*",
+    "@corestack/platform": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@corestack/tsconfig": "workspace:*",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

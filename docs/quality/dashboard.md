@@ -2,7 +2,18 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05 Readiness Gate complete,
+> estimated. Last update: **2026-07-30** — **E05-T01 (Tenancy module
+> scaffold) complete**: new `@corestack/tenancy` package — module factory,
+> 3 repository ports (contract-only), event contracts, a
+> `ModuleConfigSpec` with defaults, a schema-only migration, 3 tests (8
+> assertions). Full build/typecheck/lint/test/architecture-fitness/export-
+> snapshot gate green repo-wide. Found and documented one confirmed
+> platform-framework limitation along the way (`ModuleConfigSpec<T>`
+> cannot express an optional or coerced config field under this repo's
+> `exactOptionalPropertyTypes`) — resolved module-locally, recorded in
+> [e05-readiness-friction-log.md](../engineering/e05-readiness-friction-log.md).
+> Organization/Membership/Invitation aggregates intentionally **not**
+> started (E05-T02, next). Prior update: **E05 Readiness Gate complete,
 > verdict GO** (full report:
 > [e05-readiness-gate-report.md](../engineering/e05-readiness-gate-report.md);
 > friction log:
@@ -109,14 +120,14 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 57 files / **461 tests** — re-measured 2026-07-30 via direct `vitest run` per package (kernel 9 files/114 · lint fixtures 2/15 · architecture fitness 5/31 · platform 24/197 unit + 14/97 integration · example module 2/3 unit + 1/4 integration); +7 tests since 2026-07-29 from the E05 readiness gate's export snapshots (+4: 1 kernel, 3 platform) and mutation-proof fixtures (+3: Cache, RateLimiter, Encrypter) — no new test *files* except platform's new `api-surface.test.ts` |
+| Test files / tests   | 60 files / **469 tests** — re-measured 2026-07-30 via direct `vitest run` per package (kernel 9 files/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 unit + 14/97 integration · example module 2/3 unit + 1/4 integration · **tenancy 3/8 new**); architecture-fitness gained 5 tests (31→36) from tenancy's new manifest-rules/tenant-isolation coverage — every fitness suite scans `packages/*` dynamically, no config change needed |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
 | Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                                                                    |
 | Contract suites      | **8** — Cache, RateLimiter, Logger, EventBus, UnitOfWork, Encrypter, ProcessedEventStore, IdempotencyStore (Health-check is deliberately not a 9th — snapshot-tested instead, see matrix) |
 | Certified adapters   | **13** of 13 existing adapters certified against their port's suite (every un-certified pairing is an adapter that doesn't exist yet — pino `Logger`, KMS `Encrypter` — correctly `pending`, not missing) — see [adapter-certification-matrix.md](../testing/adapter-certification-matrix.md) |
-| Snapshot count       | **3 files / 8 snapshots** (2026-07-30, up from 2/4) — kernel's `api-surface.test.ts` (2: `.` and `./testing` export lists) + platform's new `api-surface.test.ts` (3: `.`, `./postgres`, `./testing`) + platform's `health-readiness.test.ts` (3, payload shapes). All 5 declared export conditions across kernel/platform now gated — see [snapshot-governance.md](../testing/snapshot-governance.md) |
+| Snapshot count       | **4 files / 10 snapshots** (2026-07-30, up from 3/8) — kernel's `api-surface.test.ts` (2: `.` and `./testing` export lists) + platform's `api-surface.test.ts` (3: `.`, `./postgres`, `./testing`) + platform's `health-readiness.test.ts` (3, payload shapes) + tenancy's new `api-surface.test.ts` (2: `.` and `./testing`; `./testing` snapshots `[]` — reserved, empty by design). All declared export conditions across kernel/platform/tenancy now gated — see [snapshot-governance.md](../testing/snapshot-governance.md) |
 | Mutation-proven rules | **6 of 8 suites** (2026-07-30, up from 3) have on-record proof an assertion catches a real regression — Logger (ADR-0022), ProcessedEventStore (UUID bug), IdempotencyStore (historical ADR-0020 case), and, added by the E05 readiness gate, Cache (`NeverExpiringCache`), RateLimiter (`LexicographicRateLimiter`, reproducing E03-T41's real string-comparison bug), Encrypter (`FixedIvEncrypter`, reused-IV) — plus EventBus partial (1 of ~8 assertions) and the adapter-matrix fitness rule. `UnitOfWork` alone remains without mutation proof — a **deliberate deferral** (no plausible silent-mistake fixture exists for its assertions), not an oversight — see [contract-coverage-audit.md](../testing/contract-coverage-audit.md) |
 | Performance baselines | **10** scripts total across two directories — 6 outbox subsystem + 4 E04 contract-suite adapters (RateLimiter, IdempotencyStore, ProcessedEventStore, UnitOfWork); none CI-gated, deferred to E04-T13 — see [performance/README.md](performance/) |
 
@@ -176,6 +187,7 @@ and [docs/quality/performance/](performance/).
 | No export-surface snapshot for kernel's `./testing` subpath or any of platform's 3 conditions | Only kernel's main entry (`.`) is gated; an accidental rename/removal on the other 4 conditions has no automated signal — see [export-surface-audit.md](../releases/export-surface-audit.md) | Unscheduled — small, mechanical addition, natural first E04-follow-up task |
 | 4 of 8 contract suites (Cache, RateLimiter, Encrypter, UnitOfWork) have no mutation proof; EventBus only partial | Relocated from already-passing tests; no observed pre-fix failure or broken fixture on record for these — see [contract-coverage-audit.md](../testing/contract-coverage-audit.md) | Unscheduled — closing this retroactively is real follow-up work under Section 12's proposed permanent policy |
 | `manifest-rules.test.mjs` checks export-condition ordering only, not that declared `dist/` targets actually exist/resolve | Verified manually for this audit (all 5 conditions resolve); no regression today, but a future misconfigured subpath would only fail at consumer-import time | Unscheduled |
+| `ModuleConfigSpec<T>.schema`'s `ZodType<T>` type can't express an optional or coerced config field under `exactOptionalPropertyTypes` (confirmed empirically building tenancy's config spec, E05-T01) | Worked around module-locally (required-string fields + an `EnvSource`-level defaulting wrapper); relaxing the platform type is a deliberate future decision with cross-module blast radius, not a fix to smuggle into a module task — see [e05-readiness-friction-log.md](../engineering/e05-readiness-friction-log.md) | Unscheduled |
 
 ## Documentation coverage
 

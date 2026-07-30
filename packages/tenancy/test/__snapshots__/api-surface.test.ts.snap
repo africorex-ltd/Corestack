@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`tenancy public surface > runtime exports are intentional (./testing subpath) 1`] = `[]`;
+
+exports[`tenancy public surface > runtime exports are intentional (main entry) 1`] = `
+[
+  "DEFAULT_TENANCY_CONFIG",
+  "MEMBER_JOINED_EVENT",
+  "MEMBER_REMOVED_EVENT",
+  "MEMBER_UPDATED_EVENT",
+  "ORGANIZATION_CREATED_EVENT",
+  "ORGANIZATION_DELETED_EVENT",
+  "ORGANIZATION_UPDATED_EVENT",
+  "createTenancyModule",
+  "resolveTenancyConfig",
+  "tenancyConfigSpec",
+  "withTenancyConfigDefaults",
+]
+`;

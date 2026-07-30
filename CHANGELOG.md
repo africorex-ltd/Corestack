@@ -852,6 +852,35 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   dual-mode bootstrap has supported a local `DATABASE_URL` path since the
   Infrastructure Consolidation pass.
 
+- **E05-T01: `@corestack/tenancy` module scaffold (2026-07-30).** New
+  package — the first business module, and the template every later
+  module copies (closes the readiness gate's top friction-log finding: no
+  scaffold generator or reference existed anywhere in the repo). Ships:
+  `createTenancyModule` (lifecycle-conformant `ModuleInstance` — registers
+  a purge subscription that **throws** rather than silently no-op'ing, a
+  static `health()` stub, empty `useCases`); three repository ports
+  (`OrganizationRepository`, `MembershipRepository`, `InvitationRepository`
+  — contract-only, no persistence); tenancy event name/payload contracts
+  (types only, no publishing); `tenancyConfigSpec`; a schema-only migration
+  (`CREATE SCHEMA tenancy`) with a README naming the RLS-DDL bridge gap it
+  defers to E05-T21; 3 tests (8 assertions: compilation, module-
+  registration, export-surface snapshot). The first bare `vitest.config.ts`
+  in the repo. **No `Organization`/`Membership`/`Invitation` aggregate and
+  no commands** — explicitly out of scope, reserved for E05-T02 onward.
+  Full build/typecheck/lint/test/architecture-fitness/export-snapshot gate
+  green repo-wide; architecture-fitness gained 5 tests (31→36) automatically
+  (every fitness suite scans `packages/*` dynamically).
+  Found and documented one confirmed platform-framework limitation while
+  building the config spec: `ModuleConfigSpec<T>.schema`'s `ZodType<T>`
+  type cannot express an optional or `z.coerce`-d field under this repo's
+  `exactOptionalPropertyTypes` (verified with an isolated `tsc` check, not
+  assumed) — worked around module-locally (required-string fields + an
+  `EnvSource`-level defaulting wrapper) rather than changing approved
+  platform code from within a module task; recorded as a confirmed finding
+  in
+  [e05-readiness-friction-log.md](docs/engineering/e05-readiness-friction-log.md)
+  for whoever picks up the platform-level decision later.
+
 <!--
 Template for release-train entries:
 

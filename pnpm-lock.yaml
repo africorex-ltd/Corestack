@@ -110,6 +110,28 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@20.19.43)(yaml@2.9.0)
 
+  packages/tenancy:
+    dependencies:
+      '@corestack/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@corestack/platform':
+        specifier: workspace:*
+        version: link:../platform
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
+    devDependencies:
+      '@corestack/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/tsconfig
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@20.19.43)(yaml@2.9.0)
+
   tooling/eslint:
     dependencies:
       '@eslint/js':
