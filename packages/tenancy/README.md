@@ -46,7 +46,10 @@ and dependency rule as `@corestack/platform` and
 src/
   domain/                     Organization (E05-T02) + Membership (E05-T04) + Invitation (E05-T05) aggregates
   application/                createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases, repository ports, event contracts, config spec, module factory
-  infrastructure/postgres/schema/  Drizzle table definitions (E05-T09) — schema only, no adapter yet; not exported via package.json (no `./postgres` condition until a real adapter exists)
+  infrastructure/postgres/schema/  Drizzle table definitions (E05-T09) — schema only
+  infrastructure/postgres/rls/     RLS policy DDL generators (E05-T10)
+  infrastructure/postgres/postgres-*-repository.ts  Real Postgres repository adapters (E05-T11)
+  postgres/                   `./postgres` package export barrel (E05-T11) — repositories, mappers, role bootstrap, RLS generators, constraint-violation helpers
   interface/                  reserved — HTTP bindings land in E05-T24..T25
   testing/                    reserved — adopter-facing fakes land in E05-T28
 test-support/                 in-memory repositories + workflow harness + event collector (E05-T08) — internal, project-only; not exported, not adopter-facing
@@ -68,10 +71,43 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11)
 
 What exists today:
 
+- **Real Postgres repository adapters** (`src/infrastructure/postgres/postgres-*-repository.ts`,
+  exported from `@corestack/tenancy/postgres`, E05-T11) —
+  `PostgresOrganizationRepository`/`PostgresMembershipRepository`/
+  `PostgresInvitationRepository` replace the in-memory reference for
+  real persistence. Every repository port method now takes
+  `tx: TransactionContext` as its first parameter, threading the
+  enclosing `PostgresUnitOfWork`'s open transaction through (the
+  generic kernel type, not a Postgres-specific one — the ports stay
+  adapter-agnostic; the in-memory repositories ignore the parameter).
+  Dedicated mapper functions (`src/infrastructure/postgres/mappers/`)
+  convert row ↔ aggregate explicitly, backed by a new
+  `{Organization,Membership,Invitation}.reconstitute(...)` domain
+  factory (loads persisted state with no domain-event emission,
+  the counterpart to each aggregate's existing `create`). Database
+  unique-constraint violations are translated into the same
+  `DuplicateSlugError`/`MembershipAlreadyExistsError`/
+  `InvitationAlreadyExistsError` the application layer already declares
+  — the real enforcement behind each repository's best-effort
+  `exists*` pre-check. `organizations`' `existsBySlug`/`findBySlug`
+  elevate to the `tenancy_platform` role for one query each (ADR-0024's
+  visibility model structurally can't see other organizations
+  otherwise); `save` sets its own `app.current_org` from the
+  aggregate's own id ([ADR-0025](../../docs/adr/0025-organization-save-sets-own-org-context.md)).
+  16 new integration tests: 14 direct repository tests (round-trips, uniqueness,
+  RLS isolation, soft-delete, timestamps, enums) plus 2 workflow-level
+  tests reusing the existing `TenancyWorkflowHarness` with injected
+  Postgres repositories/`UnitOfWork` factory (Section 10 reuse — no
+  scenario duplication), run against a real PostgreSQL 18 instance via
+  a new dual-mode integration harness (`test/integration/`,
+  `pnpm test:integration`). No HTTP handlers, no background jobs, no
+  anonymous invitation acceptance, no cross-organization admin
+  features. Full detail:
+  [docs/modules/tenancy-postgres-adapters.md](../../docs/modules/tenancy-postgres-adapters.md).
 - **Row-Level Security policy design + migration** (`src/infrastructure/postgres/rls/`,
   `migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10) —
   resolves the `organizations` visibility question left open by E05-T09:
@@ -105,8 +141,8 @@ What exists today:
   email)`. `organizations` uses a plain (non-partial) `UNIQUE(slug)` —
   unlike `tenancy-contract.md`'s 4-state blueprint, the implemented
   3-state `Organization` model has no `purged` state to key a partial
-  index off of. No repository methods, no SQL query code — RLS policies
-  now exist (E05-T10, see below), but nothing queries through them yet.
+  index off of. RLS policies (E05-T10) and real Postgres repository
+  adapters (E05-T11, see above) now query through this schema.
   `drizzle-orm` is a peer + dev dependency only, not re-exported from any
   package entry point yet. Full detail:
   [docs/modules/tenancy-schema-design.md](../../docs/modules/tenancy-schema-design.md)
@@ -255,7 +291,8 @@ What exists today:
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and the real table + RLS migration
   (`migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10).
-- 24 test files (377 tests) covering the module scaffold (compilation
+- 24 unit test files (378 tests) plus 1 real-Postgres integration test
+  file (16 tests, `pnpm test:integration`) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -285,7 +322,8 @@ What exists today:
   closed `current_setting` usage, no bind parameters, bare — never
   schema-qualified — column references, unsafe-identifier rejection) and
   7 verifying the shipped migration parses cleanly and matches those same
-  generators' output byte-for-byte.
+  generators' output byte-for-byte, plus the 16 real-Postgres integration
+  tests described above (E05-T11).
 
 ## What is intentionally **not** implemented
 
@@ -363,11 +401,12 @@ What exists today:
   invocation rather than silently succeeding — a loud placeholder, not a
   no-op, so a purge is never marked complete without a real delete once
   Tenancy owns actual data. Real deletion ships in **E05-T13**.
-- **Repository adapters, SQL query methods, HTTP handlers reading through
-  RLS.** Table DDL and RLS policies now exist (E05-T10) — see above — but
-  nothing queries through them yet. Lands in a future repository-adapter
-  task (Section 14/15 of the E05-T10 directive: do not start this
-  automatically).
+- **HTTP handlers, background jobs, anonymous invitation acceptance,
+  cross-organization admin features.** Real Postgres repository
+  adapters now exist (E05-T11) — see above — but nothing wires them
+  into an HTTP interface or a background job yet; anonymous acceptance
+  and admin bypasses remain explicitly out of scope (Section 1/14 of
+  the E05-T11 directive).
 - **HTTP interface.** `src/interface/` is a reserved, empty barrel.
   **E05-T24–T25**.
 - **Adopter-facing test fixtures.** `src/testing/` is a reserved, empty
@@ -377,13 +416,21 @@ What exists today:
 
 ## Next task
 
-**E05-T11**: not yet specified by the founder directive sequence. Not
-started. Per Section 15 of the E05-T10 directive, repository
-implementation is explicitly **not** to be started automatically — it
-waits for an explicit E05-T11 prompt.
+**E05-T12**: not yet specified by the founder directive sequence. Not
+started. Per Section 16 of the E05-T11 directive, HTTP interfaces and
+background jobs are explicitly **not** to be started automatically — it
+waits for an explicit E05-T12 prompt.
 
 ## See also
 
+- [docs/modules/tenancy-postgres-adapters.md](../../docs/modules/tenancy-postgres-adapters.md) —
+  the Postgres repository adapters (E05-T11): transaction boundaries,
+  mapper strategy, RLS assumptions (including the `existsBySlug`/
+  `findBySlug` platform-role elevation), constraint-violation
+  translation, operational considerations, and known limitations.
+- [docs/adr/0025-organization-save-sets-own-org-context.md](../../docs/adr/0025-organization-save-sets-own-org-context.md) —
+  why `PostgresOrganizationRepository.save` sets its own `app.current_org`
+  from the aggregate's own id, correcting a specific claim in ADR-0024.
 - [docs/modules/tenancy-rls-design.md](../../docs/modules/tenancy-rls-design.md) —
   the RLS policy design (E05-T10): policy matrix, the `organizations`
   direct-visibility model, fail-closed behaviour (including the

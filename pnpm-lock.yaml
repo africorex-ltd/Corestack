@@ -125,12 +125,18 @@ importers:
       '@corestack/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
+      '@testcontainers/postgresql':
+        specifier: ^10.13.2
+        version: 10.28.0
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(postgres@3.4.9)
       postgres:
         specifier: ^3.4.5
         version: 3.4.9
+      testcontainers:
+        specifier: ^10.13.2
+        version: 10.28.0
       typescript:
         specifier: ^5.8.3
         version: 5.9.3

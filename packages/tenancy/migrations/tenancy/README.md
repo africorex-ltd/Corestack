@@ -9,6 +9,13 @@
   [ADR-0024](../../../../docs/adr/0024-tenancy-organizations-rls-direct-visibility.md)
   for the `organizations` visibility decision.
 
+`PostgresOrganizationRepository`/`PostgresMembershipRepository`/
+`PostgresInvitationRepository` (E05-T11,
+`src/infrastructure/postgres/postgres-*-repository.ts`, exported from
+`@corestack/tenancy/postgres`) are the first real consumers of this
+migration and its RLS policies — see
+[docs/modules/tenancy-postgres-adapters.md](../../../../docs/modules/tenancy-postgres-adapters.md).
+
 ## History: the gap this migration closed
 
 Earlier revisions of this README flagged two open questions and

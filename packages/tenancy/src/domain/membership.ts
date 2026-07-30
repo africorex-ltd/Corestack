@@ -19,6 +19,18 @@ export interface CreateMembershipInput {
   readonly now: Date;
 }
 
+/** Full persisted state — every field this aggregate carries, as plain values. No `now`: unlike `create`, reconstitution has no "current instant" of its own. */
+export interface ReconstituteMembershipInput {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly role: MembershipRole;
+  readonly status: MembershipStatus;
+  readonly joinedAt: Date;
+  readonly updatedAt: Date;
+  readonly removedAt: Date | null;
+}
+
 /**
  * The `Membership` aggregate (E05-T04) — a pure domain model with no
  * persistence, no I/O, and no kernel *port* dependency, following exactly
@@ -90,6 +102,25 @@ export class Membership {
       role: input.role,
     });
     return membership;
+  }
+
+  /**
+   * Rebuilds a `Membership` from its full persisted state (E05-T11) —
+   * emits **no** domain event, and does not re-validate creation-time
+   * invariants. See `Organization.reconstitute`'s doc comment for the
+   * full rationale, shared verbatim across all three aggregates.
+   */
+  static reconstitute(input: ReconstituteMembershipInput): Membership {
+    return new Membership(
+      MembershipId.from(input.id),
+      OrganizationId.from(input.organizationId),
+      UserId.from(input.userId),
+      input.role,
+      input.status,
+      input.joinedAt,
+      input.updatedAt,
+      input.removedAt,
+    );
   }
 
   get id(): MembershipId {

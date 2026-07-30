@@ -99,7 +99,7 @@ export async function createOrganization(
     if (!slugResult.ok) return slugResult;
     const slug = slugResult.value;
 
-    const alreadyExists = await deps.repository.existsBySlug(context, slug);
+    const alreadyExists = await deps.repository.existsBySlug(tx, context, slug);
     if (alreadyExists) {
       return err(new DuplicateSlugError(slug.value));
     }
@@ -115,7 +115,17 @@ export async function createOrganization(
     if (!organizationResult.ok) return organizationResult;
     const organization = organizationResult.value;
 
-    await deps.repository.save(context, organization);
+    try {
+      await deps.repository.save(tx, context, organization);
+    } catch (error) {
+      // Section 8 (E05-T11): the real backstop behind existsBySlug's
+      // best-effort check above — a Postgres adapter translates the
+      // organizations_slug_key unique-violation into this same
+      // DuplicateSlugError; the in-memory adapter has no such constraint
+      // to violate, so this branch is unreachable there.
+      if (error instanceof DuplicateSlugError) return err(error);
+      throw error;
+    }
 
     for (const event of organization.pullDomainEvents()) {
       // Organization.create() only ever emits OrganizationCreated. The

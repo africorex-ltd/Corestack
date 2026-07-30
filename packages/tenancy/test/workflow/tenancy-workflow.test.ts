@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isErr, isOk } from "@corestack/kernel";
 import type { OrgScopedContext } from "@corestack/platform";
+import type { TransactionContext } from "@corestack/kernel";
 
 import { Membership } from "../../src/domain/membership.js";
 import { MembershipRole } from "../../src/domain/membership-role.js";
@@ -18,11 +19,13 @@ import type { InvitationRepository } from "../../src/application/invitation-repo
 import type { Invitation } from "../../src/domain/invitation.js";
 
 import { TenancyWorkflowHarness } from "../../test-support/workflow-harness.js";
-import type { InMemoryInvitationRepository } from "../../test-support/in-memory-invitation-repository.js";
 
 const OWNER_ID = "00000000-0000-7000-8000-000000000001";
 const ADMIN_ID = "00000000-0000-7000-8000-000000000002";
 const MEMBER_ID = "00000000-0000-7000-8000-000000000003";
+
+/** A no-op `TransactionContext` for direct repository calls made outside any use case's `uow.run()` — pure test setup, not a workflow step under test, so there is no real transaction to thread through. */
+const NO_OP_TX: TransactionContext = { publish: () => {} };
 
 /** Seeds an ACTIVE membership directly via the repository — bypassing any use case, since no `createOrganization`-adjacent command auto-creates an owner membership yet (a documented non-goal). Publishes no event: this is test setup, not a workflow step under test. */
 async function seedMembership(
@@ -38,7 +41,7 @@ async function seedMembership(
     role,
     now: harness.clock.now(),
   });
-  await harness.membershipRepository.save(orgContext, membership);
+  await harness.membershipRepository.save(NO_OP_TX, orgContext, membership);
 }
 
 /** Creates an organization and returns its id plus an `OrgScopedContext` for it — the common setup step every scenario below starts from. */
@@ -141,7 +144,7 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       if (second.ok) throw new Error("expected err");
       expect(second.error).toBeInstanceOf(InvitationAlreadyExistsError);
       harness.events.expectNone();
-      const invitations = await harness.invitationRepository.listForOrganization(orgContext);
+      const invitations = await harness.invitationRepository.listForOrganization(NO_OP_TX, orgContext);
       expect(invitations).toHaveLength(1);
     });
   });
@@ -176,12 +179,13 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       harness.events.expectSequence(["invitation.expired"]);
 
       const invitation = await harness.invitationRepository.findById(
+        NO_OP_TX,
         orgContext,
         invite.value.invitationId,
       );
       expect(invitation?.status).toBe(InvitationStatus.Expired);
 
-      const membership = await harness.membershipRepository.findByUserId(orgContext, MEMBER_ID);
+      const membership = await harness.membershipRepository.findByUserId(NO_OP_TX, orgContext, MEMBER_ID);
       expect(membership).toBeNull();
     });
   });
@@ -201,12 +205,13 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       if (!invite.ok) throw new Error("expected ok");
 
       const invitation = await harness.invitationRepository.findById(
+        NO_OP_TX,
         orgContext,
         invite.value.invitationId,
       );
       if (invitation === null) throw new Error("setup failed: invitation not found");
       invitation.revoke(harness.clock.now());
-      await harness.invitationRepository.save(orgContext, invitation);
+      await harness.invitationRepository.save(NO_OP_TX, orgContext, invitation);
       harness.events.clear();
 
       const accept = await harness.acceptInvitation(orgContext, {
@@ -220,7 +225,7 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       if (accept.ok) throw new Error("expected err");
       expect(accept.error).toBeInstanceOf(InvitationNotPendingError);
       harness.events.expectNone();
-      const membership = await harness.membershipRepository.findByUserId(orgContext, MEMBER_ID);
+      const membership = await harness.membershipRepository.findByUserId(NO_OP_TX, orgContext, MEMBER_ID);
       expect(membership).toBeNull();
     });
   });
@@ -243,7 +248,7 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       if (invite.ok) throw new Error("expected err");
       expect(invite.error).toBeInstanceOf(InviterNotAuthorizedError);
       harness.events.expectNone();
-      const invitations = await harness.invitationRepository.listForOrganization(orgContext);
+      const invitations = await harness.invitationRepository.listForOrganization(NO_OP_TX, orgContext);
       expect(invitations).toHaveLength(0);
     });
 
@@ -333,7 +338,7 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       expect(second.error).toBeInstanceOf(InvitationNotPendingError);
       harness.events.expectNone();
 
-      const memberships = await harness.membershipRepository.listForOrganization(orgContext);
+      const memberships = await harness.membershipRepository.listForOrganization(NO_OP_TX, orgContext);
       const forMember = memberships.filter((m) => m.userId.value === MEMBER_ID);
       expect(forMember).toHaveLength(1);
       expect(forMember[0]?.status).toBe(MembershipStatus.Active);
@@ -357,7 +362,7 @@ describe("Tenancy workflow integration (E05-T08)", () => {
 
       expect(isErr(invite)).toBe(true);
       harness.events.expectNone();
-      const invitations = await harness.invitationRepository.listForOrganization(orgContext);
+      const invitations = await harness.invitationRepository.listForOrganization(NO_OP_TX, orgContext);
       expect(invitations).toHaveLength(0);
     });
 
@@ -408,12 +413,13 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       harness.events.expectNone();
 
       const secondInvitation = await harness.invitationRepository.findById(
+        NO_OP_TX,
         orgContext,
         secondInvite.value.invitationId,
       );
       expect(secondInvitation?.status).toBe(InvitationStatus.Pending);
 
-      const memberships = await harness.membershipRepository.listForOrganization(orgContext);
+      const memberships = await harness.membershipRepository.listForOrganization(NO_OP_TX, orgContext);
       expect(memberships.filter((m) => m.userId.value === MEMBER_ID)).toHaveLength(1);
     });
 
@@ -443,12 +449,19 @@ describe("Tenancy workflow integration (E05-T08)", () => {
       harness.events.clear();
 
       class ThrowingInvitationRepository implements InvitationRepository {
-        constructor(private readonly inner: InMemoryInvitationRepository) {}
-        findById(context: OrgScopedContext, invitationId: string): Promise<Invitation | null> {
-          return this.inner.findById(context, invitationId);
+        constructor(private readonly inner: InvitationRepository) {}
+        findById(
+          tx: TransactionContext,
+          context: OrgScopedContext,
+          invitationId: string,
+        ): Promise<Invitation | null> {
+          return this.inner.findById(tx, context, invitationId);
         }
-        listForOrganization(context: OrgScopedContext): Promise<readonly Invitation[]> {
-          return this.inner.listForOrganization(context);
+        listForOrganization(
+          tx: TransactionContext,
+          context: OrgScopedContext,
+        ): Promise<readonly Invitation[]> {
+          return this.inner.listForOrganization(tx, context);
         }
         existsPendingForEmail(...args: Parameters<InvitationRepository["existsPendingForEmail"]>) {
           return this.inner.existsPendingForEmail(...args);
@@ -483,7 +496,7 @@ describe("Tenancy workflow integration (E05-T08)", () => {
 
       // The membership save (first) already landed, despite the overall
       // throw — proving there is no automatic rollback in the in-memory path.
-      const membership = await harness.membershipRepository.findByUserId(orgContext, MEMBER_ID);
+      const membership = await harness.membershipRepository.findByUserId(NO_OP_TX, orgContext, MEMBER_ID);
       expect(membership).not.toBeNull();
       expect(membership?.status).toBe(MembershipStatus.Active);
 

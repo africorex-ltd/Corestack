@@ -1,3 +1,4 @@
+import type { TransactionContext } from "@corestack/kernel";
 import type { OrgScopedContext } from "@corestack/platform";
 
 import { MembershipStatus } from "../src/domain/membership-status.js";
@@ -25,27 +26,46 @@ export class InMemoryMembershipRepository implements MembershipRepository {
   #memberships: ReadonlyMap<string, Membership> = new Map();
   #byUser: ReadonlyMap<string, string> = new Map();
 
-  async findById(_context: OrgScopedContext, membershipId: string): Promise<Membership | null> {
+  async findById(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    membershipId: string,
+  ): Promise<Membership | null> {
     return this.#memberships.get(membershipId) ?? null;
   }
 
-  async listForOrganization(context: OrgScopedContext): Promise<readonly Membership[]> {
+  async listForOrganization(
+    _tx: TransactionContext,
+    context: OrgScopedContext,
+  ): Promise<readonly Membership[]> {
     return [...this.#memberships.values()].filter(
       (membership) => membership.organizationId.value === context.organizationId,
     );
   }
 
-  async findByUserId(context: OrgScopedContext, userId: string): Promise<Membership | null> {
+  async findByUserId(
+    _tx: TransactionContext,
+    context: OrgScopedContext,
+    userId: string,
+  ): Promise<Membership | null> {
     const membershipId = this.#byUser.get(userKey(context.organizationId, userId));
     return membershipId === undefined ? null : this.#memberships.get(membershipId) ?? null;
   }
 
-  async existsActive(context: OrgScopedContext, userId: string): Promise<boolean> {
-    const membership = await this.findByUserId(context, userId);
+  async existsActive(
+    tx: TransactionContext,
+    context: OrgScopedContext,
+    userId: string,
+  ): Promise<boolean> {
+    const membership = await this.findByUserId(tx, context, userId);
     return membership !== null && membership.status === MembershipStatus.Active;
   }
 
-  async save(_context: OrgScopedContext, membership: Membership): Promise<void> {
+  async save(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    membership: Membership,
+  ): Promise<void> {
     this.#memberships = new Map(this.#memberships).set(membership.id.value, membership);
     this.#byUser = new Map(this.#byUser).set(
       userKey(membership.organizationId.value, membership.userId.value),

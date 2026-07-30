@@ -1244,6 +1244,63 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   files; architecture-fitness unchanged at 36; export-snapshot unchanged
   — no new public exports).
 
+- **E05-T11: Tenancy real Postgres repository adapters (2026-07-30).**
+  `PostgresOrganizationRepository`/`PostgresMembershipRepository`/
+  `PostgresInvitationRepository` replace the in-memory reference
+  repositories, exported from a new `@corestack/tenancy/postgres`
+  subpath. Every repository port method now takes
+  `tx: TransactionContext` (the generic kernel type) as its first
+  parameter — required because every real call happens inside a
+  `UnitOfWork.run()` callback, and the platform's own transaction-
+  ownership rule forbids opening a second transaction there; the
+  Postgres adapters narrow `tx` to `PostgresTransactionContext`
+  internally to reach `.sql`, keeping the ports themselves adapter-
+  agnostic. New `{Organization,Membership,Invitation}.reconstitute(...)`
+  domain factories (no event emission, no creation-time revalidation)
+  back three new dedicated mapper modules. Database unique-constraint
+  violations (`SQLSTATE 23505` + `constraint_name`, confirmed
+  empirically against real PostgreSQL 18.4) are translated into
+  `DuplicateSlugError`/`MembershipAlreadyExistsError`/
+  `InvitationAlreadyExistsError` — the real enforcement behind each
+  repository's best-effort `exists*` pre-check, now actually reachable
+  from the use cases via a new `try`/`catch` around each `save()` call.
+  **[ADR-0025](docs/adr/0025-organization-save-sets-own-org-context.md):**
+  corrects ADR-0024's claim that `PostgresUnitOfWork`'s constructor sets
+  `app.current_org` for organization creation (impossible — the
+  aggregate's id doesn't exist yet at that point) — `save` sets it
+  itself, as its own first statement, using the aggregate's own id.
+  `existsBySlug`/`findBySlug` elevate to the `tenancy_platform` role for
+  one query each (ADR-0024's visibility model can't see other
+  organizations otherwise); `ensureTenancyModuleRoles` gained
+  `GRANT tenancy_platform TO tenancy_app WITH INHERIT FALSE` —
+  confirmed empirically that a plain inheriting grant would silently and
+  permanently disable tenant isolation for the app role, not merely
+  enable a deliberate elevation. **Fixed a real, previously-undiscovered
+  defect**: tenancy's own `vitest.config.ts` (E05-T01) excluded
+  `test/integration/**` even when explicitly targeted via the CLI
+  (Vitest's `--exclude` adds to, rather than replaces, a config file's
+  exclude list) — `pnpm test:integration` could never have worked before
+  this task, since tenancy had no integration test to expose the bug
+  until now; fixed with a dedicated `vitest.integration.config.ts`.
+  `TenancyWorkflowHarness` gained two optional constructor options
+  (`repositories`/`uowFactory`) enabling the same 13 E05-T08 workflow
+  scenarios' harness to run against real Postgres without duplicating
+  any of them (Section 10). New dual-mode integration-test harness
+  (local `DATABASE_URL` scratch database or Testcontainers fallback,
+  mirroring `@corestack/platform`'s own private strategy) with 16 tests:
+  14 direct repository tests (round-trips, uniqueness via real
+  constraint violations, RLS isolation both directions, soft-delete,
+  timestamp/enum round-trips) and 2 workflow-level tests reusing
+  `TenancyWorkflowHarness`. Full detail:
+  [tenancy-postgres-adapters.md](docs/modules/tenancy-postgres-adapters.md).
+  No HTTP handlers, no background jobs, no anonymous invitation
+  acceptance, no cross-organization admin features. Full
+  build/typecheck/lint/test/architecture-fitness/export-snapshot gate
+  green repo-wide (tenancy 377→378 unit tests, 24 files unchanged, plus
+  a new 16-test integration file run separately via
+  `pnpm test:integration`; architecture-fitness unchanged at 36;
+  export-snapshot updated for the new `./postgres` subpath).
+
 <!--
 Template for release-train entries:
 

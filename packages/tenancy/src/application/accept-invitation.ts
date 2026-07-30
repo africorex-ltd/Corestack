@@ -150,7 +150,7 @@ export async function acceptInvitation(
     // invitation-repository.ts's comment on why: this use case needs to
     // see the actual status to distinguish "not found" from "not
     // pending" from "pending but expired," three different errors.
-    const invitation = await deps.invitationRepository.findById(context, invitationId.value);
+    const invitation = await deps.invitationRepository.findById(tx, context, invitationId.value);
     if (invitation === null) {
       return err(new InvitationNotFoundError(invitationId.value));
     }
@@ -188,7 +188,7 @@ export async function acceptInvitation(
     if (now.getTime() >= invitation.expiresAt.getTime()) {
       const expiresAt = invitation.expiresAt;
       invitation.expire(now);
-      await deps.invitationRepository.save(context, invitation);
+      await deps.invitationRepository.save(tx, context, invitation);
 
       for (const event of invitation.pullDomainEvents()) {
         if (event.type !== "InvitationExpired") continue;
@@ -213,6 +213,7 @@ export async function acceptInvitation(
     // Section 5 step 3: no active membership may already exist for this
     // user in this organization.
     const alreadyActiveMember = await deps.membershipRepository.existsActive(
+      tx,
       context,
       userId.value,
     );
@@ -233,8 +234,17 @@ export async function acceptInvitation(
     invitation.accept(now);
 
     // Section 5 step 6: both changes persisted inside this one UnitOfWork.
-    await deps.membershipRepository.save(context, membership);
-    await deps.invitationRepository.save(context, invitation);
+    try {
+      await deps.membershipRepository.save(tx, context, membership);
+    } catch (error) {
+      // Section 8 (E05-T11): the real backstop behind existsActive's
+      // best-effort check above — a Postgres adapter translates the
+      // memberships_active_org_user_key unique-violation into this same
+      // MembershipAlreadyExistsError.
+      if (error instanceof MembershipAlreadyExistsError) return err(error);
+      throw error;
+    }
+    await deps.invitationRepository.save(tx, context, invitation);
 
     // Section 5 step 7: publish all resulting domain events.
     for (const event of membership.pullDomainEvents()) {

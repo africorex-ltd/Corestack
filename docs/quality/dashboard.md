@@ -2,7 +2,49 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T10 (Tenancy Row-Level
+> estimated. Last update: **2026-07-30** — **E05-T11 (Tenancy real
+> Postgres repository adapters) complete**: `PostgresOrganizationRepository`/
+> `PostgresMembershipRepository`/`PostgresInvitationRepository` replace the
+> in-memory reference, exported from a new `@corestack/tenancy/postgres`
+> subpath. Every repository port method now takes `tx: TransactionContext`
+> (the generic kernel type) as its first parameter, threading the
+> enclosing `PostgresUnitOfWork`'s open transaction through — required
+> because every real call happens inside a `UnitOfWork.run()` callback and
+> the platform's own transaction-ownership rule forbids opening a second
+> transaction there. New `{Organization,Membership,Invitation}.reconstitute(...)`
+> domain factories back three new mapper modules (row ↔ aggregate, no
+> inline mapping). Database unique-constraint violations (`SQLSTATE
+> 23505` + `constraint_name`, confirmed empirically against real
+> PostgreSQL 18.4) are translated into `DuplicateSlugError`/
+> `MembershipAlreadyExistsError`/`InvitationAlreadyExistsError` — the real
+> enforcement behind each repository's best-effort `exists*` pre-check,
+> now reachable from the use cases via a new `try`/`catch` around each
+> `save()` call. **[ADR-0025](../adr/0025-organization-save-sets-own-org-context.md):**
+> corrects ADR-0024's claim that `PostgresUnitOfWork`'s constructor sets
+> `app.current_org` for organization creation (impossible — the
+> aggregate's id doesn't exist yet at that point) — `save` sets it itself.
+> `existsBySlug`/`findBySlug` elevate to the `tenancy_platform` role for
+> one query each; `ensureTenancyModuleRoles` gained `GRANT tenancy_platform
+> TO tenancy_app WITH INHERIT FALSE` — confirmed empirically that a plain
+> inheriting grant would silently and permanently disable tenant isolation
+> for the app role. **Fixed a real, previously-undiscovered defect**:
+> tenancy's own `vitest.config.ts` (E05-T01) excluded `test/integration/**`
+> even when explicitly targeted via the CLI — `pnpm test:integration`
+> could never have worked before this task; fixed with a dedicated
+> `vitest.integration.config.ts`. `TenancyWorkflowHarness` gained two
+> optional constructor options (`repositories`/`uowFactory`) enabling the
+> same E05-T08 workflow scenarios' harness to run against real Postgres
+> without duplicating them. New dual-mode integration-test harness with
+> 16 tests (14 direct repository, 2 workflow-level), run separately via
+> `pnpm test:integration` against real PostgreSQL 18. Full detail:
+> [tenancy-postgres-adapters.md](../modules/tenancy-postgres-adapters.md).
+> No HTTP handlers, no background jobs, no anonymous invitation
+> acceptance, no cross-organization admin features. Full
+> build/typecheck/lint/test/architecture-fitness/export-snapshot gate
+> green repo-wide (tenancy unit tests 377→378, 24 files unchanged, plus a
+> new 16-test integration file; architecture-fitness unchanged at 36;
+> export-snapshot updated for the new `./postgres` subpath). Prior
+> update: **2026-07-30** — **E05-T10 (Tenancy Row-Level
 > Security policy design + migration) complete**: resolves the
 > `organizations` visibility question E05-T09 left open. New
 > `src/infrastructure/postgres/rls/` (internal): per-command RLS policy
@@ -372,14 +414,14 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 66 files / **742 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 24/377** (up from 22/330, +47 — 2 new test files: `test/infrastructure/rls-policies.test.ts` (40, DDL-level RLS generator checks — no live database) and `test/infrastructure/migration-rls-consistency.test.ts` (7, cross-checks the shipped migration against those same generators)). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T10): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T10 added no new package/manifest surface) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 66 files / **743 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 24/378** (up from 24/377, +1 — one test added to the existing export-surface snapshot suite for the new `./postgres` subpath; no new unit test *files*, since the new adapter code is exercised entirely by the new integration test file below). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/16 tests** (new, E05-T11, `pnpm test:integration` — real PostgreSQL 18, previously nonexistent for this package; also fixed a pre-existing `vitest.config.ts` defect that made `test:integration` impossible to run at all before this task). Architecture-fitness stayed at 5/36 (E05-T11 added no new package/manifest surface) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
 | Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                                                                    |
 | Contract suites      | **8** — Cache, RateLimiter, Logger, EventBus, UnitOfWork, Encrypter, ProcessedEventStore, IdempotencyStore (Health-check is deliberately not a 9th — snapshot-tested instead, see matrix) |
 | Certified adapters   | **13** of 13 existing adapters certified against their port's suite (every un-certified pairing is an adapter that doesn't exist yet — pino `Logger`, KMS `Encrypter` — correctly `pending`, not missing) — see [adapter-certification-matrix.md](../testing/adapter-certification-matrix.md) |
-| Snapshot count       | **4 files / 10 snapshots** (2026-07-30, up from 3/8) — kernel's `api-surface.test.ts` (2: `.` and `./testing` export lists) + platform's `api-surface.test.ts` (3: `.`, `./postgres`, `./testing`) + platform's `health-readiness.test.ts` (3, payload shapes) + tenancy's new `api-surface.test.ts` (2: `.` and `./testing`; `./testing` snapshots `[]` — reserved, empty by design). All declared export conditions across kernel/platform/tenancy now gated — see [snapshot-governance.md](../testing/snapshot-governance.md) |
+| Snapshot count       | **4 files / 11 snapshots** (2026-07-30, up from 4/10) — kernel's `api-surface.test.ts` (2: `.` and `./testing` export lists) + platform's `api-surface.test.ts` (3: `.`, `./postgres`, `./testing`) + platform's `health-readiness.test.ts` (3, payload shapes) + tenancy's `api-surface.test.ts` (3, up from 2: `.`, `./postgres` — new in E05-T11 — and `./testing`; `./testing` snapshots `[]` — reserved, empty by design). All declared export conditions across kernel/platform/tenancy now gated — see [snapshot-governance.md](../testing/snapshot-governance.md) |
 | Mutation-proven rules | **6 of 8 suites** (2026-07-30, up from 3) have on-record proof an assertion catches a real regression — Logger (ADR-0022), ProcessedEventStore (UUID bug), IdempotencyStore (historical ADR-0020 case), and, added by the E05 readiness gate, Cache (`NeverExpiringCache`), RateLimiter (`LexicographicRateLimiter`, reproducing E03-T41's real string-comparison bug), Encrypter (`FixedIvEncrypter`, reused-IV) — plus EventBus partial (1 of ~8 assertions) and the adapter-matrix fitness rule. `UnitOfWork` alone remains without mutation proof — a **deliberate deferral** (no plausible silent-mistake fixture exists for its assertions), not an oversight — see [contract-coverage-audit.md](../testing/contract-coverage-audit.md) |
 | Performance baselines | **10** scripts total across two directories — 6 outbox subsystem + 4 E04 contract-suite adapters (RateLimiter, IdempotencyStore, ProcessedEventStore, UnitOfWork); none CI-gated, deferred to E04-T13 — see [performance/README.md](performance/) |
 

@@ -6,9 +6,9 @@ import {
   createContext,
   isErr,
   isOk,
-  type Context,
   type DomainEvent,
   type IdGenerator,
+  type TransactionContext,
 } from "@corestack/kernel";
 import { requireOrgScoped, type OrgScopedContext } from "@corestack/platform";
 
@@ -86,7 +86,11 @@ class FakeInvitationRepository implements InvitationRepository {
     return false;
   }
 
-  async save(_context: Context, invitation: Invitation): Promise<void> {
+  async save(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    invitation: Invitation,
+  ): Promise<void> {
     this.saveCallCount += 1;
     this.saved.push(invitation);
   }
@@ -116,7 +120,11 @@ class FakeMembershipRepository implements MembershipRepository {
     return this.activeExists;
   }
 
-  async save(_context: Context, membership: Membership): Promise<void> {
+  async save(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    membership: Membership,
+  ): Promise<void> {
     this.saveCallCount += 1;
     this.saved.push(membership);
   }

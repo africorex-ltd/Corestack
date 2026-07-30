@@ -6,9 +6,9 @@ import {
   createContext,
   isErr,
   isOk,
-  type Context,
   type DomainEvent,
   type IdGenerator,
+  type TransactionContext,
 } from "@corestack/kernel";
 import { requireOrgScoped, type OrgScopedContext } from "@corestack/platform";
 
@@ -81,6 +81,10 @@ class FakeOrganizationRepository implements OrganizationRepository {
     return false;
   }
 
+  async findBySlug(): Promise<Organization | null> {
+    return null;
+  }
+
   async save(): Promise<void> {
     // not called by inviteMember
   }
@@ -101,12 +105,20 @@ class FakeInvitationRepository implements InvitationRepository {
     return [];
   }
 
-  async existsPendingForEmail(_context: Context, email: Email): Promise<boolean> {
+  async existsPendingForEmail(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    email: Email,
+  ): Promise<boolean> {
     this.existsPendingForEmailCallCount += 1;
     return this.pendingEmails.has(email.value);
   }
 
-  async save(_context: Context, invitation: Invitation): Promise<void> {
+  async save(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    invitation: Invitation,
+  ): Promise<void> {
     this.saveCallCount += 1;
     this.saved.push(invitation);
   }

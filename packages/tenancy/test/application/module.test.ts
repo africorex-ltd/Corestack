@@ -12,6 +12,7 @@ const organizationRepository: OrganizationRepository = {
   findById: async () => null,
   listForContext: async () => [],
   existsBySlug: async () => false,
+  findBySlug: async () => null,
   save: async () => undefined,
 };
 const membershipRepository: MembershipRepository = {

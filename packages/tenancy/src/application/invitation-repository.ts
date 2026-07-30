@@ -1,20 +1,27 @@
+import type { TransactionContext } from "@corestack/kernel";
 import type { OrgScopedContext } from "@corestack/platform";
 
 import type { Email } from "../domain/email.js";
 import type { Invitation } from "../domain/invitation.js";
 
 /**
- * Port only — no persistence implementation yet (E05-T09 froze the
- * database shape; a later task builds the Postgres adapter). See
- * `docs/modules/tenancy-schema-design.md`'s "Repository persistence
- * expectations" section for the transactional/uniqueness/concurrency
- * contract the eventual adapter must satisfy. Org-scoped like
- * `MembershipRepository` — every invitation belongs to exactly one
- * organization. `PreviewInvitation`'s public, unauthenticated lookup (by
- * raw token, not by org context) is deliberately not modeled here: that
- * lookup path is a genuinely different shape (no `OrgScopedContext`
- * exists yet at that point in the flow) and belongs to the command that
- * implements it (E05-T18), not this contract-only port.
+ * Port only until E05-T11; now backed by `PostgresInvitationRepository`
+ * as well as the in-memory reference. See
+ * `docs/modules/tenancy-postgres-adapters.md` for the adapter's
+ * transaction/mapper strategy. Org-scoped like `MembershipRepository` —
+ * every invitation belongs to exactly one organization, no RLS open
+ * question, no platform-role elevation needed. `PreviewInvitation`'s
+ * public, unauthenticated lookup (by raw token, not by org context) is
+ * deliberately not modeled here: that lookup path is a genuinely
+ * different shape (no `OrgScopedContext` exists yet at that point in the
+ * flow) and belongs to the command that implements it (E05-T18), not
+ * this contract-only port — see `docs/modules/tenancy-rls-design.md`'s
+ * "Future anonymous invitation acceptance" section for why that path
+ * cannot simply reuse this port's app-role-scoped methods either.
+ *
+ * **Every method takes `tx: TransactionContext` as its first parameter**
+ * (E05-T11) — see `organization-repository.ts`'s doc comment for the full
+ * rationale (shared verbatim across all three tenancy repository ports).
  *
  * Signatures updated in E05-T05 to return the real `Invitation` aggregate
  * instead of the superseded `InvitationRecord` placeholder — the same
@@ -39,19 +46,32 @@ import type { Invitation } from "../domain/invitation.js";
  * inspects `.status` itself. Nothing was added to this port for E05-T07.
  */
 export interface InvitationRepository {
-  findById(context: OrgScopedContext, invitationId: string): Promise<Invitation | null>;
-  listForOrganization(context: OrgScopedContext): Promise<readonly Invitation[]>;
+  findById(
+    tx: TransactionContext,
+    context: OrgScopedContext,
+    invitationId: string,
+  ): Promise<Invitation | null>;
+  listForOrganization(
+    tx: TransactionContext,
+    context: OrgScopedContext,
+  ): Promise<readonly Invitation[]>;
 
   /**
    * Whether a `PENDING` invitation already exists for this email within
    * this organization. **Not a hard uniqueness guarantee** — like
    * `OrganizationRepository.existsBySlug`, this is a best-effort,
-   * friendly-error check until E05-T21 adds a real uniqueness constraint;
-   * nothing durable yet prevents two concurrent `inviteMember` calls for
-   * the same email from both passing it.
+   * friendly-error check; `invitations_pending_org_email_key` (the real
+   * unique constraint, E05-T10) plus `save`'s constraint-violation
+   * translation into `InvitationAlreadyExistsError` is the actual
+   * enforcement — nothing durable prevents two concurrent `inviteMember`
+   * calls for the same email from both passing this check first.
    */
-  existsPendingForEmail(context: OrgScopedContext, email: Email): Promise<boolean>;
+  existsPendingForEmail(
+    tx: TransactionContext,
+    context: OrgScopedContext,
+    email: Email,
+  ): Promise<boolean>;
 
   /** Persists a newly created (or subsequently modified) invitation. */
-  save(context: OrgScopedContext, invitation: Invitation): Promise<void>;
+  save(tx: TransactionContext, context: OrgScopedContext, invitation: Invitation): Promise<void>;
 }

@@ -22,6 +22,29 @@ import { TENANCY_APP_ROLE, TENANCY_PLATFORM_ROLE } from "./rls/roles.js";
  * call that publishes an event (every use case this module has —
  * `createOrganization`/`inviteMember`/`acceptInvitation` all publish)
  * fails with "permission denied for schema platform."
+ *
+ * **`GRANT tenancy_platform TO tenancy_app WITH INHERIT FALSE`** (E05-T11)
+ * — lets `tenancy_app` elevate to `tenancy_platform` via an explicit
+ * `SET LOCAL ROLE tenancy_platform` inside a single transaction (used by
+ * `PostgresOrganizationRepository.existsBySlug`/`findBySlug` to see
+ * across every organization, not just the caller's current one — see
+ * `docs/modules/tenancy-postgres-adapters.md`'s "RLS assumptions").
+ * **`WITH INHERIT FALSE` is load-bearing, not a style choice**: verified
+ * empirically that a plain `GRANT role TO other_role` (the PG16+ default,
+ * `WITH INHERIT TRUE`) makes every one of `tenancy_app`'s own RLS-scoped
+ * queries silently also satisfy `tenancy_platform`'s `USING (true)`
+ * policy — Postgres evaluates RLS against the union of every role a
+ * session is a member of when that membership inherits, so an inheriting
+ * grant here would permanently disable tenant isolation for the app role,
+ * not just enable a deliberate, explicit elevation. `WITH INHERIT FALSE`
+ * requires the exact `SET LOCAL ROLE` statement to activate the grant;
+ * confirmed (same empirical pass) that without it, `SET LOCAL ROLE`
+ * itself fails outright with "permission denied to set role" — this
+ * grant is what makes the elevation possible at all for a real,
+ * directly-authenticated `tenancy_app` connection (a superuser test
+ * session can `SET LOCAL ROLE` into anything regardless, per E03-T30's
+ * own finding — this grant matters for the production shape, not the
+ * test harness).
  */
 export async function ensureTenancyModuleRoles(sql: Sql): Promise<void> {
   await ensureTenancyRoles(sql, {
@@ -30,4 +53,7 @@ export async function ensureTenancyModuleRoles(sql: Sql): Promise<void> {
   });
   await sql.unsafe(`GRANT USAGE ON SCHEMA platform TO ${TENANCY_APP_ROLE}`);
   await sql.unsafe(`GRANT INSERT ON platform.outbox TO ${TENANCY_APP_ROLE}`);
+  await sql.unsafe(
+    `GRANT ${TENANCY_PLATFORM_ROLE} TO ${TENANCY_APP_ROLE} WITH INHERIT FALSE`,
+  );
 }

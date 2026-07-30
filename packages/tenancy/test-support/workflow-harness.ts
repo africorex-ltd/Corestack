@@ -37,6 +37,9 @@ import type { InvitationNotPendingError } from "../src/application/invitation-no
 import type { MembershipAlreadyExistsError } from "../src/application/membership-already-exists-error.js";
 import { DEFAULT_TENANCY_CONFIG, type ResolvedTenancyConfig } from "../src/application/config.js";
 import type { ConflictError, ForbiddenError, NotFoundError } from "@corestack/kernel";
+import type { OrganizationRepository } from "../src/application/organization-repository.js";
+import type { MembershipRepository } from "../src/application/membership-repository.js";
+import type { InvitationRepository } from "../src/application/invitation-repository.js";
 
 import { InMemoryOrganizationRepository } from "./in-memory-organization-repository.js";
 import { InMemoryMembershipRepository } from "./in-memory-membership-repository.js";
@@ -61,6 +64,30 @@ export interface TenancyWorkflowHarnessOptions {
   readonly now?: Date;
   /** Default: `DEFAULT_TENANCY_CONFIG` (`invitationExpiryDays: 7`, etc.). */
   readonly config?: ResolvedTenancyConfig;
+  /**
+   * E05-T11: substitute a real repository set (e.g. the Postgres
+   * adapters) for the in-memory reference — Section 10's "reuse the
+   * existing workflow harness with a Postgres-backed repository set."
+   * All three must be supplied together; omit entirely for the default
+   * in-memory behavior.
+   */
+  readonly repositories?: {
+    readonly organizationRepository: OrganizationRepository;
+    readonly membershipRepository: MembershipRepository;
+    readonly invitationRepository: InvitationRepository;
+  };
+  /**
+   * E05-T11: builds the `UnitOfWork` for a given call, keyed by the
+   * organization id that call is scoped to (`null` for `createOrganization`,
+   * which is pre-org-scope). Needed because `PostgresUnitOfWork` sets
+   * `app.current_org` from a constructor argument fixed at construction
+   * time — unlike the in-memory reference (one shared instance for the
+   * harness's whole lifetime), a Postgres-backed harness must construct a
+   * *fresh* `PostgresUnitOfWork` per call, scoped to whatever organization
+   * that specific call targets. Defaults to always returning the same
+   * shared in-memory `UnitOfWork`, exactly the prior (pre-E05-T11) behavior.
+   */
+  readonly uowFactory?: (organizationId: string | null) => UnitOfWork;
 }
 
 /**
@@ -88,11 +115,13 @@ export class TenancyWorkflowHarness {
   readonly clock: FixedClock;
   readonly events: EventCollector;
   readonly ids: IdGenerator;
+  /** The harness's own default `UnitOfWork` — always the shared in-memory instance, even in Postgres mode (where `#uowFactory` builds a fresh one per call instead of reusing this field). Kept public for tests that assemble their own `deps` object directly (bypassing this harness's wrapper methods) against the in-memory path. */
   readonly uow: UnitOfWork;
   readonly config: ResolvedTenancyConfig;
-  readonly organizationRepository: InMemoryOrganizationRepository;
-  readonly membershipRepository: InMemoryMembershipRepository;
-  readonly invitationRepository: InMemoryInvitationRepository;
+  readonly organizationRepository: OrganizationRepository;
+  readonly membershipRepository: MembershipRepository;
+  readonly invitationRepository: InvitationRepository;
+  readonly #uowFactory: (organizationId: string | null) => UnitOfWork;
 
   constructor(options: TenancyWorkflowHarnessOptions = {}) {
     this.clock = new FixedClock(options.now ?? DEFAULT_NOW);
@@ -103,10 +132,14 @@ export class TenancyWorkflowHarness {
     const bus = new InMemoryEventBus();
     bus.subscribe({ consumer: "workflow-harness", event: "*", handler: this.events.record });
     this.uow = new InMemoryUnitOfWork(bus);
+    this.#uowFactory = options.uowFactory ?? (() => this.uow);
 
-    this.organizationRepository = new InMemoryOrganizationRepository();
-    this.membershipRepository = new InMemoryMembershipRepository();
-    this.invitationRepository = new InMemoryInvitationRepository();
+    this.organizationRepository =
+      options.repositories?.organizationRepository ?? new InMemoryOrganizationRepository();
+    this.membershipRepository =
+      options.repositories?.membershipRepository ?? new InMemoryMembershipRepository();
+    this.invitationRepository =
+      options.repositories?.invitationRepository ?? new InMemoryInvitationRepository();
   }
 
   /** A fresh, pre-org-scope `Context` — for `createOrganization`, which is necessarily pre-org-scope (E05-T03). */
@@ -124,7 +157,7 @@ export class TenancyWorkflowHarness {
     context: Context = this.context(),
   ): Promise<Result<CreateOrganizationResult, ValidationError | DuplicateSlugError>> {
     return createOrganization(context, command, {
-      uow: this.uow,
+      uow: this.#uowFactory(null),
       repository: this.organizationRepository,
       ids: this.ids,
       clock: this.clock,
@@ -147,7 +180,7 @@ export class TenancyWorkflowHarness {
     >
   > {
     return inviteMember(context, command, {
-      uow: this.uow,
+      uow: this.#uowFactory(context.organizationId),
       organizationRepository: this.organizationRepository,
       invitationRepository: this.invitationRepository,
       membershipRepository: this.membershipRepository,
@@ -172,7 +205,7 @@ export class TenancyWorkflowHarness {
     >
   > {
     return acceptInvitation(context, command, {
-      uow: this.uow,
+      uow: this.#uowFactory(context.organizationId),
       invitationRepository: this.invitationRepository,
       membershipRepository: this.membershipRepository,
       ids: this.ids,

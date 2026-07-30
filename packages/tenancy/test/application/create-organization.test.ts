@@ -9,6 +9,7 @@ import {
   type Context,
   type DomainEvent,
   type IdGenerator,
+  type TransactionContext,
 } from "@corestack/kernel";
 
 import type { Organization } from "../../src/domain/organization.js";
@@ -57,12 +58,20 @@ class FakeOrganizationRepository implements OrganizationRepository {
     return [];
   }
 
-  async existsBySlug(_context: Context, slug: OrganizationSlug): Promise<boolean> {
+  async existsBySlug(
+    _tx: TransactionContext,
+    _context: Context,
+    slug: OrganizationSlug,
+  ): Promise<boolean> {
     this.existsBySlugCallCount += 1;
     return this.existingSlugs.has(slug.value);
   }
 
-  async save(_context: Context, organization: Organization): Promise<void> {
+  async findBySlug(): Promise<Organization | null> {
+    return null;
+  }
+
+  async save(_tx: TransactionContext, _context: Context, organization: Organization): Promise<void> {
     this.saveCallCount += 1;
     this.saved.push(organization);
   }

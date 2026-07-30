@@ -213,6 +213,7 @@ export async function inviteMember(
 
     // Section 4 step 1: organization must exist and be ACTIVE.
     const organization = await deps.organizationRepository.findById(
+      tx,
       context,
       organizationId.value,
     );
@@ -249,6 +250,7 @@ export async function inviteMember(
     // valid OrgScopedContext for an organization could invite into it
     // regardless of their own membership or role.
     const inviterMembership = await deps.membershipRepository.findByUserId(
+      tx,
       context,
       invitedBy.value,
     );
@@ -261,7 +263,11 @@ export async function inviteMember(
     }
 
     // Section 4 step 3 / Section 5: duplicate-pending-invitation check.
-    const alreadyPending = await deps.invitationRepository.existsPendingForEmail(context, email);
+    const alreadyPending = await deps.invitationRepository.existsPendingForEmail(
+      tx,
+      context,
+      email,
+    );
     if (alreadyPending) {
       return err(new InvitationAlreadyExistsError(email.value, organizationId.value));
     }
@@ -281,7 +287,16 @@ export async function inviteMember(
     if (!invitationResult.ok) return invitationResult;
     const invitation = invitationResult.value;
 
-    await deps.invitationRepository.save(context, invitation);
+    try {
+      await deps.invitationRepository.save(tx, context, invitation);
+    } catch (error) {
+      // Section 8 (E05-T11): the real backstop behind
+      // existsPendingForEmail's best-effort check above — a Postgres
+      // adapter translates the invitations_pending_org_email_key
+      // unique-violation into this same InvitationAlreadyExistsError.
+      if (error instanceof InvitationAlreadyExistsError) return err(error);
+      throw error;
+    }
 
     for (const event of invitation.pullDomainEvents()) {
       // Invitation.create() only ever emits InvitationCreated. The other

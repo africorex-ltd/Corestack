@@ -30,6 +30,17 @@ export interface CreateOrganizationInput {
   readonly now: Date;
 }
 
+/** Full persisted state — every field this aggregate carries, as plain values. No `now`: unlike `create`, reconstitution has no "current instant" of its own. */
+export interface ReconstituteOrganizationInput {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly status: OrganizationStatus;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly deletedAt: Date | null;
+}
+
 /**
  * The `Organization` aggregate (E05-T02) — a pure domain model with no
  * persistence, no I/O, and no dependency on any kernel *port* (it takes
@@ -97,6 +108,28 @@ export class Organization {
       slug: slug.value,
     });
     return organization;
+  }
+
+  /**
+   * Rebuilds an `Organization` from its full persisted state — a
+   * repository mapper's counterpart to `create` (E05-T11). Emits **no**
+   * domain event: loading an already-existing row is not a new business
+   * fact, unlike `create`, which always emits `OrganizationCreated`. Does
+   * not re-validate invariants that only make sense at creation time
+   * (e.g. name length) — a persisted row is assumed to already satisfy
+   * whatever invariants were enforced when it was written; this factory's
+   * job is reconstruction, not re-validation.
+   */
+  static reconstitute(input: ReconstituteOrganizationInput): Organization {
+    return new Organization(
+      OrganizationId.from(input.id),
+      input.name,
+      OrganizationSlug.from(input.slug),
+      input.status,
+      input.createdAt,
+      input.updatedAt,
+      input.deletedAt,
+    );
   }
 
   get id(): OrganizationId {

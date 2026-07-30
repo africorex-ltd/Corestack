@@ -416,3 +416,94 @@
   cross-organization admin bypasses beyond the existing
   `platform_full_access` pattern — all explicitly out of scope per this
   task's founder directive.
+
+### Real Postgres repository adapters (E05-T11)
+
+- New `src/infrastructure/postgres/postgres-{organization,membership,
+  invitation}-repository.ts`, exported from a new `./postgres` package
+  subpath alongside the E05-T10 RLS generators/role bootstrap:
+  `PostgresOrganizationRepository`/`PostgresMembershipRepository`/
+  `PostgresInvitationRepository` replace the in-memory reference
+  repositories for real persistence.
+- **Every repository port method now takes `tx: TransactionContext` as
+  its first parameter** — the generic kernel type, not a Postgres-
+  specific one, so `OrganizationRepository`/`MembershipRepository`/
+  `InvitationRepository` stay infrastructure-agnostic. This was a
+  necessary breaking change to all three ports, `createOrganization`/
+  `inviteMember`/`acceptInvitation` (threading `tx` from their own
+  `uow.run()` callback), the in-memory repositories, and every test
+  double that used a full-arity signature — required because every real
+  repository call happens inside a `UnitOfWork.run()` callback, and
+  `docs/unit-of-work.md`'s own rule forbids opening a second transaction
+  there. `PostgresOrganizationRepository`/etc. narrow `tx` to
+  `PostgresTransactionContext` internally to reach `.sql`.
+- **New `{Organization,Membership,Invitation}.reconstitute(...)` domain
+  factories** — loads full persisted state with no domain-event
+  emission and no creation-time revalidation, the counterpart to each
+  aggregate's existing `create`. Backs three new dedicated mapper
+  modules (`infrastructure/postgres/mappers/`), row ↔ aggregate, with
+  no inline mapping in any repository method.
+- **Constraint-violation translation** (`infrastructure/postgres/
+  constraint-violation.ts`): `error.code === '23505'` +
+  `error.constraint_name` (both confirmed empirically against real
+  PostgreSQL 18.4 before writing any code) map to `DuplicateSlugError`/
+  `MembershipAlreadyExistsError`/`InvitationAlreadyExistsError` — the
+  real enforcement behind each repository's best-effort `exists*`
+  pre-check. All three use cases now catch their own `save()` call and
+  convert this same already-declared error type into `Result.err(...)`,
+  making the translation load-bearing rather than cosmetic.
+- **[ADR-0025](../../docs/adr/0025-organization-save-sets-own-org-context.md):**
+  corrects a specific claim in ADR-0024 — `PostgresOrganizationRepository
+  .save` sets its own `app.current_org` from the aggregate's own id as
+  its first statement, since `PostgresUnitOfWork`'s constructor cannot
+  know an about-to-be-created organization's id at construction time.
+  `existsBySlug`/`findBySlug` (both pre-org-scope) elevate to the
+  `tenancy_platform` role for their one query each — ADR-0024's own
+  visibility model structurally cannot see other organizations'
+  slugs otherwise. `ensureTenancyModuleRoles` gained one grant,
+  `GRANT tenancy_platform TO tenancy_app WITH INHERIT FALSE` —
+  confirmed empirically that `WITH INHERIT FALSE` is load-bearing: a
+  plain inheriting grant would silently and permanently disable tenant
+  isolation for the app role, not merely enable a deliberate elevation.
+- **No `findByOrganizationAndUser`** (Section 5, despite the founder
+  directive's wording) — `findByUserId(tx, context, userId)` already is
+  this operation. **`findBySlug` added** (Section 4's explicit ask,
+  no current caller — flagged, not mistaken for a discovered
+  requirement).
+- New dual-mode Postgres integration-test harness
+  (`test/integration/tenancy-postgres.postgres.test.ts`,
+  `pnpm test:integration`) — local `DATABASE_URL` scratch database or a
+  Testcontainers fallback, mirroring `@corestack/platform`'s own
+  private `test-support/test-database.ts` strategy (not reusable
+  across the package boundary, so reimplemented locally). Every
+  repository call runs through a genuinely authenticated `tenancy_app`
+  connection, never the superuser session — proving RLS is actually
+  enforced. **Fixed a real, previously-undiscovered defect**: this
+  package's `vitest.config.ts` (E05-T01) excluded `test/integration/**`
+  globally, including when explicitly targeted via the CLI (Vitest's
+  `--exclude` adds to a config file's exclude list rather than
+  replacing it) — `test:integration` could never have worked before
+  this task, since tenancy had no integration test to expose the bug
+  until now. Fixed with a dedicated `vitest.integration.config.ts` and
+  an updated `test:integration` script using `--config`.
+- `TenancyWorkflowHarness` (test-support, E05-T08) gained two optional
+  constructor options — `repositories` (substitute the in-memory
+  repositories) and `uowFactory` (build a fresh, correctly-org-scoped
+  `UnitOfWork` per call) — enabling Section 10's "reuse the existing
+  workflow harness with a Postgres-backed repository set" without
+  duplicating any of T08's own 13 in-memory scenarios. Every existing
+  unit test is unaffected (both options default to the prior in-memory
+  behavior).
+- 17 new tests total (tenancy package: 377→378 unit tests, 24 files
+  unchanged — one test added to the existing export-surface snapshot
+  suite for the new `./postgres` subpath; plus a new 16-test integration
+  file, run separately via `pnpm test:integration` against real
+  PostgreSQL 18): 14 direct repository tests (round-trips, slug/active-
+  membership/pending-invitation uniqueness via real constraint
+  violations, RLS isolation both directions, soft-delete, timestamp/enum
+  round-trips) and 2 workflow-level tests reusing
+  `TenancyWorkflowHarness`. No repository
+  query services beyond the existing ports, no HTTP handlers, no
+  background jobs, no anonymous invitation acceptance, no cross-
+  organization admin features — all explicitly out of scope per this
+  task's founder directive.

@@ -25,6 +25,19 @@ export interface CreateInvitationInput {
   readonly expiresAt: Date;
 }
 
+/** Full persisted state — every field this aggregate carries, as plain values. No `now`: unlike `create`, reconstitution has no "current instant" of its own. */
+export interface ReconstituteInvitationInput {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly email: string;
+  readonly role: InvitationRole;
+  readonly status: InvitationStatus;
+  readonly invitedBy: string;
+  readonly createdAt: Date;
+  readonly expiresAt: Date;
+  readonly respondedAt: Date | null;
+}
+
 /**
  * The `Invitation` aggregate (E05-T05) — a pure domain model with no
  * persistence, no I/O, and no kernel *port* dependency, following exactly
@@ -124,6 +137,30 @@ export class Invitation {
       expiresAt: input.expiresAt,
     });
     return invitation;
+  }
+
+  /**
+   * Rebuilds an `Invitation` from its full persisted state (E05-T11) —
+   * emits **no** domain event, and does not re-validate creation-time
+   * invariants (e.g. `expiresAt` strictly after `now` — a persisted
+   * `PENDING` row may legitimately have an `expiresAt` already in the
+   * past by the time it's reloaded; that is exactly what
+   * `acceptInvitation`'s expiry check exists to catch, not something
+   * this factory should reject on load). See
+   * `Organization.reconstitute`'s doc comment for the shared rationale.
+   */
+  static reconstitute(input: ReconstituteInvitationInput): Invitation {
+    return new Invitation(
+      InvitationId.from(input.id),
+      OrganizationId.from(input.organizationId),
+      Email.from(input.email),
+      input.role,
+      input.status,
+      UserId.from(input.invitedBy),
+      input.createdAt,
+      input.expiresAt,
+      input.respondedAt,
+    );
   }
 
   get id(): InvitationId {

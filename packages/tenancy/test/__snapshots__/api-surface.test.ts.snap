@@ -1,5 +1,26 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`tenancy public surface > runtime exports are intentional (./postgres subpath) 1`] = `
+[
+  "PostgresInvitationRepository",
+  "PostgresMembershipRepository",
+  "PostgresOrganizationRepository",
+  "TENANCY_APP_ROLE",
+  "TENANCY_PLATFORM_ROLE",
+  "buildOrgScopedTableRlsDdl",
+  "buildOrganizationsRlsDdl",
+  "ensureTenancyModuleRoles",
+  "isUniqueViolation",
+  "toInvitation",
+  "toInvitationRow",
+  "toMembership",
+  "toMembershipRow",
+  "toOrganization",
+  "toOrganizationRow",
+  "uniqueViolationConstraintName",
+]
+`;
+
 exports[`tenancy public surface > runtime exports are intentional (./testing subpath) 1`] = `[]`;
 
 exports[`tenancy public surface > runtime exports are intentional (main entry) 1`] = `

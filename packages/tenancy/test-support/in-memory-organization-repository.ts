@@ -1,4 +1,4 @@
-import type { Context } from "@corestack/kernel";
+import type { Context, TransactionContext } from "@corestack/kernel";
 import type { OrgScopedContext } from "@corestack/platform";
 
 import type { Organization } from "../src/domain/organization.js";
@@ -31,20 +31,40 @@ export class InMemoryOrganizationRepository implements OrganizationRepository {
   #organizations: ReadonlyMap<string, Organization> = new Map();
   #slugIndex: ReadonlyMap<string, string> = new Map();
 
-  async findById(_context: OrgScopedContext, organizationId: string): Promise<Organization | null> {
+  async findById(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    organizationId: string,
+  ): Promise<Organization | null> {
     return this.#organizations.get(organizationId) ?? null;
   }
 
-  async listForContext(context: OrgScopedContext): Promise<readonly Organization[]> {
+  async listForContext(
+    _tx: TransactionContext,
+    context: OrgScopedContext,
+  ): Promise<readonly Organization[]> {
     const organization = this.#organizations.get(context.organizationId);
     return organization === undefined ? [] : [organization];
   }
 
-  async existsBySlug(_context: Context, slug: OrganizationSlug): Promise<boolean> {
+  async existsBySlug(
+    _tx: TransactionContext,
+    _context: Context,
+    slug: OrganizationSlug,
+  ): Promise<boolean> {
     return this.#slugIndex.has(slug.value);
   }
 
-  async save(_context: Context, organization: Organization): Promise<void> {
+  async findBySlug(
+    _tx: TransactionContext,
+    _context: Context,
+    slug: OrganizationSlug,
+  ): Promise<Organization | null> {
+    const organizationId = this.#slugIndex.get(slug.value);
+    return organizationId === undefined ? null : this.#organizations.get(organizationId) ?? null;
+  }
+
+  async save(_tx: TransactionContext, _context: Context, organization: Organization): Promise<void> {
     this.#organizations = new Map(this.#organizations).set(organization.id.value, organization);
     this.#slugIndex = new Map(this.#slugIndex).set(organization.slug.value, organization.id.value);
   }

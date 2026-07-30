@@ -1,3 +1,4 @@
+import type { TransactionContext } from "@corestack/kernel";
 import type { OrgScopedContext } from "@corestack/platform";
 
 import { InvitationStatus } from "../src/domain/invitation-status.js";
@@ -18,17 +19,28 @@ import type { InvitationRepository } from "../src/application/invitation-reposit
 export class InMemoryInvitationRepository implements InvitationRepository {
   #invitations: ReadonlyMap<string, Invitation> = new Map();
 
-  async findById(_context: OrgScopedContext, invitationId: string): Promise<Invitation | null> {
+  async findById(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    invitationId: string,
+  ): Promise<Invitation | null> {
     return this.#invitations.get(invitationId) ?? null;
   }
 
-  async listForOrganization(context: OrgScopedContext): Promise<readonly Invitation[]> {
+  async listForOrganization(
+    _tx: TransactionContext,
+    context: OrgScopedContext,
+  ): Promise<readonly Invitation[]> {
     return [...this.#invitations.values()].filter(
       (invitation) => invitation.organizationId.value === context.organizationId,
     );
   }
 
-  async existsPendingForEmail(context: OrgScopedContext, email: Email): Promise<boolean> {
+  async existsPendingForEmail(
+    _tx: TransactionContext,
+    context: OrgScopedContext,
+    email: Email,
+  ): Promise<boolean> {
     return [...this.#invitations.values()].some(
       (invitation) =>
         invitation.organizationId.value === context.organizationId &&
@@ -37,7 +49,11 @@ export class InMemoryInvitationRepository implements InvitationRepository {
     );
   }
 
-  async save(_context: OrgScopedContext, invitation: Invitation): Promise<void> {
+  async save(
+    _tx: TransactionContext,
+    _context: OrgScopedContext,
+    invitation: Invitation,
+  ): Promise<void> {
     this.#invitations = new Map(this.#invitations).set(invitation.id.value, invitation);
   }
 }
