@@ -45,7 +45,7 @@ and dependency rule as `@corestack/platform` and
 ```
 src/
   domain/                     Organization (E05-T02) + Membership (E05-T04) + Invitation (E05-T05) aggregates
-  application/                createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases, repository ports, event contracts, config spec, module factory
+  application/                createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases; getOrganization + listOrganizationMembers + listPendingInvitations queries (E05-T12); repository ports, event contracts, config spec, module factory
   infrastructure/postgres/schema/  Drizzle table definitions (E05-T09) — schema only
   infrastructure/postgres/rls/     RLS policy DDL generators (E05-T10)
   infrastructure/postgres/postgres-*-repository.ts  Real Postgres repository adapters (E05-T11)
@@ -71,10 +71,36 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11) + query services (E05-T12)
 
 What exists today:
 
+- **Query services** (`src/application/get-organization-query.ts`,
+  `list-organization-members-query.ts`, `list-pending-invitations-query.ts`,
+  E05-T12) — the module's complete read side: `getOrganization`,
+  `listOrganizationMembers`, `listPendingInvitations`. Each returns a
+  plain DTO (`OrganizationSummary`/`OrganizationMemberSummary`/
+  `PendingInvitationSummary`), never an `Organization`/`Membership`/
+  `Invitation` aggregate. **No new repository method was added** — every
+  query is built entirely on `findById`/`listForOrganization`, unchanged
+  since E05-T02/T04/T11, and relies entirely on RLS for tenant isolation
+  (no query adds its own organization filter). `getOrganization`
+  deliberately mirrors `OrganizationRepository.findById`'s exact shape —
+  `context: OrgScopedContext` plus a separate target `organizationId` —
+  so a mismatched target (asking about a different organization than the
+  one the transaction is scoped to) returns `null` via RLS, the same as a
+  genuinely missing row. `listOrganizationMembers` returns every
+  membership regardless of status (never filtered out, only `removedAt`
+  is hidden from the DTO); `listPendingInvitations` filters to `PENDING`
+  only, sorted by `createdAt` ascending. `TenancyWorkflowHarness` gained
+  matching `getOrganization`/`listOrganizationMembers`/
+  `listPendingInvitations` wrapper methods, reusing the harness's
+  existing repository/`UnitOfWork` wiring rather than a separate
+  query-only test harness. New integration tests prove organization A
+  cannot see organization B through any of the three queries, and that
+  `existsBySlug`'s platform-role elevation does not leak into
+  `getOrganization`'s visibility within the same transaction. Full
+  detail: [docs/modules/tenancy-query-services.md](../../docs/modules/tenancy-query-services.md).
 - **Real Postgres repository adapters** (`src/infrastructure/postgres/postgres-*-repository.ts`,
   exported from `@corestack/tenancy/postgres`, E05-T11) —
   `PostgresOrganizationRepository`/`PostgresMembershipRepository`/
@@ -291,8 +317,8 @@ What exists today:
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and the real table + RLS migration
   (`migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10).
-- 24 unit test files (378 tests) plus 1 real-Postgres integration test
-  file (16 tests, `pnpm test:integration`) covering the module scaffold (compilation
+- 27 unit test files (391 tests) plus 1 real-Postgres integration test
+  file (20 tests, `pnpm test:integration`) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -322,8 +348,13 @@ What exists today:
   closed `current_setting` usage, no bind parameters, bare — never
   schema-qualified — column references, unsafe-identifier rejection) and
   7 verifying the shipped migration parses cleanly and matches those same
-  generators' output byte-for-byte, plus the 16 real-Postgres integration
-  tests described above (E05-T11).
+  generators' output byte-for-byte, plus 13 new query-service unit tests
+  (E05-T12: DTO field mapping, sort order, `PENDING`-only filtering,
+  cross-organization isolation against in-memory test doubles) and 4 new
+  integration tests proving organization A cannot see organization B
+  through any of the three queries and that platform-role elevation
+  doesn't leak into query visibility — 20 real-Postgres integration
+  tests in total (E05-T11 + E05-T12).
 
 ## What is intentionally **not** implemented
 
@@ -403,10 +434,22 @@ What exists today:
   Tenancy owns actual data. Real deletion ships in **E05-T13**.
 - **HTTP handlers, background jobs, anonymous invitation acceptance,
   cross-organization admin features.** Real Postgres repository
-  adapters now exist (E05-T11) — see above — but nothing wires them
-  into an HTTP interface or a background job yet; anonymous acceptance
-  and admin bypasses remain explicitly out of scope (Section 1/14 of
-  the E05-T11 directive).
+  adapters (E05-T11) and query services (E05-T12) now exist — see
+  above — but nothing wires them into an HTTP interface or a background
+  job yet; anonymous acceptance and admin bypasses remain explicitly out
+  of scope (Section 1/14 of the E05-T12 directive).
+- **Pagination, filtering, and search on the query services.** Both list
+  queries return every matching row in one call; neither accepts a role
+  filter, a search term, or a cursor/limit parameter (Section 14 of the
+  E05-T12 directive: "keep the read side minimal and explicit"). See
+  tenancy-query-services.md's "Future pagination note"/"Future filtering
+  note".
+- **`TenancyUseCases` still does not include the query services.** Like
+  `createOrganization`/`inviteMember`/`acceptInvitation` before them,
+  `getOrganization`/`listOrganizationMembers`/`listPendingInvitations`
+  are standalone exported functions, not wired into
+  `createTenancyModule`'s `useCases` object — the same deferred-wiring
+  precedent noted above for the write-side use cases.
 - **HTTP interface.** `src/interface/` is a reserved, empty barrel.
   **E05-T24–T25**.
 - **Adopter-facing test fixtures.** `src/testing/` is a reserved, empty
@@ -416,13 +459,17 @@ What exists today:
 
 ## Next task
 
-**E05-T12**: not yet specified by the founder directive sequence. Not
-started. Per Section 16 of the E05-T11 directive, HTTP interfaces and
+**E05-T13**: not yet specified by the founder directive sequence. Not
+started. Per Section 15 of the E05-T12 directive, HTTP interfaces and
 background jobs are explicitly **not** to be started automatically — it
-waits for an explicit E05-T12 prompt.
+waits for an explicit E05-T13 prompt.
 
 ## See also
 
+- [docs/modules/tenancy-query-services.md](../../docs/modules/tenancy-query-services.md) —
+  the query services (E05-T12): query boundaries, DTO rationale, RLS
+  assumptions, sorting guarantees, and the future pagination/filtering
+  notes.
 - [docs/modules/tenancy-postgres-adapters.md](../../docs/modules/tenancy-postgres-adapters.md) —
   the Postgres repository adapters (E05-T11): transaction boundaries,
   mapper strategy, RLS assumptions (including the `existsBySlug`/

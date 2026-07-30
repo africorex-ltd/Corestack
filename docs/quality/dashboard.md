@@ -2,7 +2,41 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T11 (Tenancy real
+> estimated. Last update: **2026-07-30** — **E05-T12 (Tenancy query
+> services) complete**: the module's complete read side —
+> `getOrganization`/`listOrganizationMembers`/`listPendingInvitations`,
+> each returning a plain DTO (`OrganizationSummary`/
+> `OrganizationMemberSummary`/`PendingInvitationSummary`) via an explicit
+> aggregate-to-DTO mapper, never an aggregate. **No new repository method
+> was added** — every query is built on `findById`/`listForOrganization`,
+> unchanged since E05-T02/T04/T11; each still opens a `UnitOfWork.run()`
+> call purely to reach a `TransactionContext`, but nothing is ever staged
+> on `tx.publish`. `getOrganization` mirrors `OrganizationRepository
+> .findById`'s exact shape (`context` plus a separate target
+> `organizationId`), reusing the identical RLS mechanism T11 already
+> proved — a mismatched target returns `null`, exactly like a missing
+> row. DTO field lists match the founder directive exactly, including
+> two deliberate omissions (`OrganizationSummary` excludes `deletedAt`,
+> `OrganizationMemberSummary` excludes `removedAt` — both already
+> communicated via `status`). `listOrganizationMembers` does not filter
+> by status; `listPendingInvitations` filters to `PENDING` only and
+> carries no `status` field. Both list queries sort in the application
+> layer, not via `ORDER BY` in the shared repository method.
+> `TenancyWorkflowHarness` gained matching wrapper methods. New
+> integration tests prove organization A cannot see organization B
+> through any of the three queries, and that `existsBySlug`'s
+> platform-role elevation does not leak into `getOrganization`'s
+> visibility within the same transaction; the existing golden-path
+> workflow test now also exercises all three queries after its accept
+> step. Full detail:
+> [tenancy-query-services.md](../modules/tenancy-query-services.md). No
+> HTTP handlers, no background jobs, no anonymous invitation acceptance,
+> no cross-organization admin features, no pagination, no filtering, no
+> search. Full build/typecheck/lint/test/integration-test/architecture-
+> fitness/export-snapshot gate green repo-wide (tenancy unit tests
+> 378→391, 24→27 files; integration file 16→20 tests, run twice for
+> stability; architecture-fitness unchanged at 36). Prior update:
+> **2026-07-30** — **E05-T11 (Tenancy real
 > Postgres repository adapters) complete**: `PostgresOrganizationRepository`/
 > `PostgresMembershipRepository`/`PostgresInvitationRepository` replace the
 > in-memory reference, exported from a new `@corestack/tenancy/postgres`
@@ -414,7 +448,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 66 files / **743 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 24/378** (up from 24/377, +1 — one test added to the existing export-surface snapshot suite for the new `./postgres` subpath; no new unit test *files*, since the new adapter code is exercised entirely by the new integration test file below). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/16 tests** (new, E05-T11, `pnpm test:integration` — real PostgreSQL 18, previously nonexistent for this package; also fixed a pre-existing `vitest.config.ts` defect that made `test:integration` impossible to run at all before this task). Architecture-fitness stayed at 5/36 (E05-T11 added no new package/manifest surface) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 69 files / **756 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 27/391** (up from 24/378, +3 files/+13 tests — three new query-service unit test files: DTO mapping, sort order, `PENDING`-only filtering, cross-organization isolation against in-memory test doubles, E05-T12). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/20 tests** (up from 16, E05-T12 — 4 new tests proving organization A cannot see organization B through any query, and that `existsBySlug`'s platform-role elevation doesn't leak into query visibility within the same transaction; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T12 added no new package/manifest surface) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

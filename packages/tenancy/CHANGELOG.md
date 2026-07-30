@@ -507,3 +507,67 @@
   background jobs, no anonymous invitation acceptance, no cross-
   organization admin features — all explicitly out of scope per this
   task's founder directive.
+
+### Query services (E05-T12)
+
+- Three new query services — `getOrganization`, `listOrganizationMembers`,
+  `listPendingInvitations` (`src/application/get-organization-query.ts`,
+  `list-organization-members-query.ts`, `list-pending-invitations-query.ts`)
+  — the module's complete read side. Each returns a plain DTO
+  (`OrganizationSummary`/`OrganizationMemberSummary`/
+  `PendingInvitationSummary`), never an `Organization`/`Membership`/
+  `Invitation` aggregate, via an explicit, hand-written aggregate-to-DTO
+  mapper (`toOrganizationSummary`/`toOrganizationMemberSummary`/
+  `toPendingInvitationSummary`) bundled in the same file.
+- **No new repository method was added.** Every query is built entirely
+  on `findById`/`listForOrganization`, unchanged since E05-T02/T04/T11 —
+  Section 2's explicit ask. Each query still runs inside a
+  `deps.uow.run()` call purely to obtain the `TransactionContext` a
+  repository method requires (`docs/unit-of-work.md`'s transaction-
+  ownership rule leaves no other way to reach one); nothing is ever
+  staged on `tx.publish`, so no query has a side effect despite the
+  transaction it opens and commits.
+- **`getOrganization` deliberately mirrors `OrganizationRepository
+  .findById`'s exact shape** — `context: OrgScopedContext` plus a
+  separate target `organizationId`, not just `context.organizationId` —
+  so a caller-supplied target that names a different organization than
+  the one the transaction is scoped to returns `null` via RLS, exactly
+  like a genuinely missing row. This is the query-layer reuse of the
+  identical RLS mechanism T11's repository-layer tests already proved.
+- **DTO field lists match the founder directive exactly**, including two
+  deliberate omissions: `OrganizationSummary` excludes `deletedAt`
+  (`Organization` itself has the getter; the directive's field list
+  stops at `updatedAt`), and `OrganizationMemberSummary` excludes
+  `removedAt` (Section 5) — `status` alone already communicates
+  `REMOVED` in both cases. `listOrganizationMembers` does **not** filter
+  out `REMOVED` memberships (only the field is hidden, not the row);
+  `listPendingInvitations` filters to `PENDING` only (Section 6) and has
+  no `status` field at all, since every returned row is `PENDING` by
+  construction.
+- Both list queries sort in the application layer after mapping to DTOs
+  (`listOrganizationMembers` by `joinedAt` ascending, `listPendingInvitations`
+  by `createdAt` ascending) — not via `ORDER BY` in the shared repository
+  method, to avoid what would amount to a new repository capability.
+- `TenancyWorkflowHarness` (test-support) gained matching
+  `getOrganization`/`listOrganizationMembers`/`listPendingInvitations`
+  wrapper methods, reusing the harness's existing repository/`UnitOfWork`
+  wiring — no separate query-only harness.
+- New integration tests (Section 8): organization A cannot see
+  organization B through any of the three queries, and `existsBySlug`'s
+  platform-role elevation does not leak into `getOrganization`'s
+  visibility within the same transaction (the elevation-then-query
+  sequence runs in one transaction on purpose, to prove `RESET ROLE`
+  actually took effect rather than merely that a fresh transaction would
+  have started unprivileged). The existing golden-path workflow
+  integration test (E05-T08/T11) now also calls all three queries after
+  its accept step, reusing the seeded scenario rather than seeding a
+  separate query-only one (Section 9).
+- 17 new tests total: 13 unit tests (DTO mapping, sort order, `PENDING`-
+  only filtering, cross-organization isolation against in-memory test
+  doubles — tenancy package: 378→391 unit tests, 24→27 files) and 4 new
+  Postgres integration tests (tenancy package: 16→20 integration tests).
+  No new repository methods, no HTTP handlers, no background jobs, no
+  anonymous invitation acceptance, no cross-organization admin features,
+  no pagination, no filtering, no search — all explicitly out of scope
+  per this task's founder directive. Full detail:
+  [docs/modules/tenancy-query-services.md](../../docs/modules/tenancy-query-services.md).

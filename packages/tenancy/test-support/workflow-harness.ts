@@ -40,6 +40,18 @@ import type { ConflictError, ForbiddenError, NotFoundError } from "@corestack/ke
 import type { OrganizationRepository } from "../src/application/organization-repository.js";
 import type { MembershipRepository } from "../src/application/membership-repository.js";
 import type { InvitationRepository } from "../src/application/invitation-repository.js";
+import {
+  getOrganization,
+  type OrganizationSummary,
+} from "../src/application/get-organization-query.js";
+import {
+  listOrganizationMembers,
+  type OrganizationMemberSummary,
+} from "../src/application/list-organization-members-query.js";
+import {
+  listPendingInvitations,
+  type PendingInvitationSummary,
+} from "../src/application/list-pending-invitations-query.js";
 
 import { InMemoryOrganizationRepository } from "./in-memory-organization-repository.js";
 import { InMemoryMembershipRepository } from "./in-memory-membership-repository.js";
@@ -210,6 +222,43 @@ export class TenancyWorkflowHarness {
       membershipRepository: this.membershipRepository,
       ids: this.ids,
       clock: this.clock,
+    });
+  }
+
+  /**
+   * E05-T12, Section 9: exposes the read side alongside the three write
+   * workflows above, reusing the same `#uowFactory`/repository wiring —
+   * no duplicated seeding logic, no separate query-only harness.
+   * `organizationId` defaults to `context.organizationId` (the ordinary
+   * "get my own org" call); a caller may still pass a different id
+   * explicitly, mirroring `getOrganization`'s own RLS-verification shape
+   * (`docs/modules/tenancy-query-services.md`'s RLS assumptions section).
+   */
+  async getOrganization(
+    context: OrgScopedContext,
+    organizationId: string = context.organizationId,
+  ): Promise<OrganizationSummary | null> {
+    return getOrganization(context, organizationId, {
+      uow: this.#uowFactory(context.organizationId),
+      repository: this.organizationRepository,
+    });
+  }
+
+  async listOrganizationMembers(
+    context: OrgScopedContext,
+  ): Promise<readonly OrganizationMemberSummary[]> {
+    return listOrganizationMembers(context, {
+      uow: this.#uowFactory(context.organizationId),
+      repository: this.membershipRepository,
+    });
+  }
+
+  async listPendingInvitations(
+    context: OrgScopedContext,
+  ): Promise<readonly PendingInvitationSummary[]> {
+    return listPendingInvitations(context, {
+      uow: this.#uowFactory(context.organizationId),
+      repository: this.invitationRepository,
     });
   }
 }

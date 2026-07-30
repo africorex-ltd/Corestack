@@ -1301,6 +1301,46 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   `pnpm test:integration`; architecture-fitness unchanged at 36;
   export-snapshot updated for the new `./postgres` subpath).
 
+- **E05-T12: Tenancy query services (2026-07-30).** The tenancy module's
+  complete read side: `getOrganization`/`listOrganizationMembers`/
+  `listPendingInvitations`, each returning a plain DTO
+  (`OrganizationSummary`/`OrganizationMemberSummary`/
+  `PendingInvitationSummary`) via an explicit aggregate-to-DTO mapper —
+  never an `Organization`/`Membership`/`Invitation` aggregate. **No new
+  repository method was added**: every query is built entirely on
+  `findById`/`listForOrganization`, unchanged since E05-T02/T04/T11;
+  each still opens a `UnitOfWork.run()` call purely to reach the
+  `TransactionContext` a repository method requires, but nothing is ever
+  staged on `tx.publish`, so no query has a side effect.
+  `getOrganization` deliberately mirrors `OrganizationRepository
+  .findById`'s exact shape (`context` plus a separate target
+  `organizationId`), reusing the identical RLS mechanism T11's
+  repository-layer tests already proved — a mismatched target returns
+  `null`, exactly like a missing row. DTO field lists match the founder
+  directive exactly, including two deliberate omissions:
+  `OrganizationSummary` excludes `deletedAt`, `OrganizationMemberSummary`
+  excludes `removedAt` (both already communicated via `status`).
+  `listOrganizationMembers` does not filter by status (only the
+  `removedAt` field is hidden); `listPendingInvitations` filters to
+  `PENDING` only and carries no `status` field, since every row is
+  `PENDING` by construction. Both list queries sort in the application
+  layer (`joinedAt`/`createdAt` ascending), not via `ORDER BY` in the
+  shared repository method. `TenancyWorkflowHarness` gained matching
+  wrapper methods, reusing its existing repository/`UnitOfWork` wiring.
+  New integration tests prove organization A cannot see organization B
+  through any of the three queries, and that `existsBySlug`'s
+  platform-role elevation does not leak into `getOrganization`'s
+  visibility within the same transaction; the existing golden-path
+  workflow test now also exercises all three queries after its accept
+  step (Section 9 reuse). Full detail:
+  [tenancy-query-services.md](docs/modules/tenancy-query-services.md).
+  No HTTP handlers, no background jobs, no anonymous invitation
+  acceptance, no cross-organization admin features, no pagination, no
+  filtering, no search. Full build/typecheck/lint/test/integration-test/
+  architecture-fitness/export-snapshot gate green repo-wide (tenancy
+  378→391 unit tests, 24→27 files; integration file 16→20 tests, run
+  twice for stability; architecture-fitness unchanged at 36).
+
 <!--
 Template for release-train entries:
 

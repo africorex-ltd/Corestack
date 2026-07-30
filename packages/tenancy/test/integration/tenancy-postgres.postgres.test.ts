@@ -52,6 +52,9 @@ import { InvitationStatus } from "../../src/domain/invitation-status.js";
 import { DuplicateSlugError } from "../../src/application/duplicate-slug-error.js";
 import { MembershipAlreadyExistsError } from "../../src/application/membership-already-exists-error.js";
 import { InvitationAlreadyExistsError } from "../../src/application/invitation-already-exists-error.js";
+import { getOrganization } from "../../src/application/get-organization-query.js";
+import { listOrganizationMembers } from "../../src/application/list-organization-members-query.js";
+import { listPendingInvitations } from "../../src/application/list-pending-invitations-query.js";
 import {
   ensureTenancyModuleRoles,
   TENANCY_APP_ROLE,
@@ -570,6 +573,20 @@ describe("Tenancy workflow (E05-T08 scenarios re-run against real Postgres, Sect
     expect(outboxRows.map((r) => r.event_name).sort()).toEqual(
       ["invitation.accepted", "invitation.created", "member.joined", "organization.created"].sort(),
     );
+
+    // E05-T12 Section 9: the read side, exercised against the same seeded
+    // scenario rather than a separately-seeded query-only test.
+    const organization = await harness.getOrganization(ownerContext);
+    expect(organization?.slug).toBe(slug);
+    expect(organization?.status).toBe(OrganizationStatus.Active);
+
+    const members = await harness.listOrganizationMembers(ownerContext);
+    expect(members.map((m) => m.userId).sort()).toEqual([memberId, ownerId].sort());
+    expect(members.every((m) => !("removedAt" in m))).toBe(true);
+
+    // The one invitation from this scenario is now ACCEPTED, not PENDING.
+    const pendingInvitations = await harness.listPendingInvitations(ownerContext);
+    expect(pendingInvitations).toEqual([]);
   });
 
   it("duplicate slug creation is rejected as DuplicateSlugError through the full use case, backed by the real unique constraint", async () => {
@@ -599,5 +616,133 @@ describe("Tenancy workflow (E05-T08 scenarios re-run against real Postgres, Sect
     expect(second.ok).toBe(false);
     if (second.ok) return;
     expect(second.error).toBeInstanceOf(DuplicateSlugError);
+  });
+});
+
+describe("Tenancy query services (E05-T12, Section 8: RLS verification)", () => {
+  /** A fresh `PostgresUnitOfWork` scoped to `organizationId` — matching exactly how `TenancyWorkflowHarness`'s own `uowFactory` builds one per query call. */
+  function queryUow(organizationId: string): PostgresUnitOfWork {
+    return new PostgresUnitOfWork(appRoleSql, organizationId);
+  }
+
+  it("getOrganization: organization A cannot see organization B", async () => {
+    const orgA = activeOrganization();
+    const orgB = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgA));
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgB));
+
+    const seenFromA = await getOrganization(orgContext(orgA.id.value), orgB.id.value, {
+      uow: queryUow(orgA.id.value),
+      repository: organizationRepository,
+    });
+    expect(seenFromA).toBeNull();
+
+    const seenFromOwnContext = await getOrganization(orgContext(orgA.id.value), orgA.id.value, {
+      uow: queryUow(orgA.id.value),
+      repository: organizationRepository,
+    });
+    expect(seenFromOwnContext?.id).toBe(orgA.id.value);
+  });
+
+  it("listOrganizationMembers: organization A cannot list organization B's members", async () => {
+    const orgA = activeOrganization();
+    const orgB = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgA));
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgB));
+
+    // Seed a membership in *both* organizations — an empty result from org
+    // A would prove nothing if org A had no members of its own to
+    // (correctly) see; asserting the exact non-empty set is what actually
+    // discriminates "RLS filtered out B" from "there was nothing to leak."
+    const membershipA = Membership.create({
+      id: randomUUID(),
+      organizationId: orgA.id.value,
+      userId: randomUUID(),
+      role: MembershipRole.Owner,
+      now: REFERENCE_DATE,
+    });
+    await withUow(orgA.id.value, (tx) =>
+      membershipRepository.save(tx, orgContext(orgA.id.value), membershipA),
+    );
+    const membershipB = Membership.create({
+      id: randomUUID(),
+      organizationId: orgB.id.value,
+      userId: randomUUID(),
+      role: MembershipRole.Owner,
+      now: REFERENCE_DATE,
+    });
+    await withUow(orgB.id.value, (tx) =>
+      membershipRepository.save(tx, orgContext(orgB.id.value), membershipB),
+    );
+
+    const membersSeenFromA = await listOrganizationMembers(orgContext(orgA.id.value), {
+      uow: queryUow(orgA.id.value),
+      repository: membershipRepository,
+    });
+    expect(membersSeenFromA.map((m) => m.id)).toEqual([membershipA.id.value]);
+  });
+
+  it("listPendingInvitations: organization A cannot list organization B's invitations", async () => {
+    const orgA = activeOrganization();
+    const orgB = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgA));
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgB));
+
+    // Seed a pending invitation in *both* organizations, for the same
+    // reason as the membership test above — an empty result must mean
+    // "RLS filtered B out," not "org A had nothing to see either."
+    const invitationA = Invitation.create({
+      id: randomUUID(),
+      organizationId: orgA.id.value,
+      email: "org-a-query-test@example.com",
+      role: InvitationRole.Member,
+      invitedBy: randomUUID(),
+      now: REFERENCE_DATE,
+      expiresAt: new Date(REFERENCE_DATE.getTime() + 7 * 24 * 60 * 60 * 1000),
+    });
+    await withUow(orgA.id.value, (tx) =>
+      invitationRepository.save(tx, orgContext(orgA.id.value), invitationA),
+    );
+    const invitationB = Invitation.create({
+      id: randomUUID(),
+      organizationId: orgB.id.value,
+      email: "org-b-query-test@example.com",
+      role: InvitationRole.Member,
+      invitedBy: randomUUID(),
+      now: REFERENCE_DATE,
+      expiresAt: new Date(REFERENCE_DATE.getTime() + 7 * 24 * 60 * 60 * 1000),
+    });
+    await withUow(orgB.id.value, (tx) =>
+      invitationRepository.save(tx, orgContext(orgB.id.value), invitationB),
+    );
+
+    const invitationsSeenFromA = await listPendingInvitations(orgContext(orgA.id.value), {
+      uow: queryUow(orgA.id.value),
+      repository: invitationRepository,
+    });
+    expect(invitationsSeenFromA.map((i) => i.id)).toEqual([invitationA.id.value]);
+  });
+
+  it("elevated uniqueness checks (existsBySlug) do not leak into getOrganization's visibility", async () => {
+    const orgA = activeOrganization();
+    const orgB = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgA));
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), orgB));
+
+    // existsBySlug elevates to the platform role for its one query
+    // (E05-T11) and correctly sees org B's slug from org A's own
+    // transaction. That elevation must not leave the transaction able to
+    // see org B's full row afterwards — RESET ROLE must have actually
+    // reverted it before getOrganization runs in the same transaction.
+    const seenFromA = await withUow(orgA.id.value, async (tx) => {
+      const slugExists = await organizationRepository.existsBySlug(tx, plainContext(), orgB.slug);
+      expect(slugExists).toBe(true);
+
+      return getOrganization(orgContext(orgA.id.value), orgB.id.value, {
+        uow: { run: (fn) => fn(tx) },
+        repository: organizationRepository,
+      });
+    });
+    expect(seenFromA).toBeNull();
   });
 });
