@@ -2,7 +2,42 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T07 (`acceptInvitation`
+> estimated. Last update: **2026-07-30** — **E05-T08 (Tenancy workflow
+> integration harness) complete**: an in-memory harness validating the
+> full create → invite → accept workflow across repositories,
+> `UnitOfWork`, and event publication before any persistence adapter
+> exists. New `test-support/` directory (sibling to `test/`, outside the
+> public `src/` surface — same precedent as `packages/platform/test-support/`):
+> `InMemoryOrganizationRepository`/`InMemoryMembershipRepository`/
+> `InMemoryInvitationRepository` (copy-on-write `Map` storage,
+> implementing the real ports exactly, no new port methods), an
+> `EventCollector` (ordered capture, `expectSequence`/`expectNone`/
+> `expectCount`/`payloadAt`), and a `TenancyWorkflowHarness` wiring class
+> exposing `createOrganization`/`inviteMember`/`acceptInvitation` over one
+> shared `UnitOfWork`/`FixedClock`/`EventBus` pair. **Deliberately did not
+> add** `OrganizationRepository.findBySlug` or
+> `MembershipRepository.findByOrganizationAndUser` — no scenario needs
+> the former, and the existing `findByUserId(context, userId)` already
+> covers the latter. 13 new end-to-end tests
+> (`test/workflow/tenancy-workflow.test.ts`): happy path with exact
+> event-sequence assertions, duplicate slug/invitation,
+> expired/revoked invitation, the full inviter-authorization matrix,
+> exactly-once invitation consumption, and three transaction-semantics
+> tests. **Proved, not just documented, a real limitation**: a dedicated
+> test wraps the real invitation repository in a `save`-throwing
+> decorator and calls `acceptInvitation` directly, confirming the
+> in-memory `UnitOfWork` provides event-staging atomicity but no storage
+> rollback across multiple repository writes — closing that gap is
+> `PostgresUnitOfWork` (E03-T40)'s job, out of this task's scope. No
+> Postgres adapters, no SQL, no RLS, no migrations, no Drizzle schemas,
+> no HTTP handlers, no performance tuning, no dependency-injection
+> framework. Full detail:
+> [tenancy-workflow-integration.md](../modules/tenancy-workflow-integration.md).
+> Tenancy package tests 294→307 (+13, 1 new test file; 20→21 files). Full
+> build/typecheck/lint/test/architecture-fitness/export-snapshot gate
+> green repo-wide (architecture-fitness unchanged at 36; export-snapshot
+> unchanged — no new public exports this task). Prior update:
+> **2026-07-30** — **E05-T07 (`acceptInvitation`
 > use case + `inviteMember` authorization) complete**: the third real
 > application service in `@corestack/tenancy` — `acceptInvitation`, the
 > membership-admission workflow, coordinating the `Invitation` and
@@ -268,7 +303,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 62 files / **659 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 20/294** (up from 19/270, +24 — 1 new test file, `accept-invitation.test.ts` (15 tests: success at ADMIN/MEMBER roles, invitation not found, email mismatch, not-pending for accepted/revoked, expiry enforcement with persistence/event assertions, duplicate active membership, event publication, `UnitOfWork` usage); `invite-member.test.ts` extended with an 8-test authorization matrix (E05-T07 Section 8); the remaining 1 was added to the existing `index.test.ts` smoke test for `acceptInvitation`'s own exports). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T07): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T07 added no new package/manifest surface) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 63 files / **672 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 21/307** (up from 20/294, +13 — 1 new test file, `test/workflow/tenancy-workflow.test.ts`: happy-path create→invite→accept with exact event-sequence assertions, duplicate slug, duplicate pending invitation, expired invitation, revoked invitation, the full inviter-authorization matrix, exactly-once invitation consumption/membership creation, and three transaction-semantics tests including the mid-flow-throw proof of no storage rollback). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T08): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T08 added no new package/manifest surface) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

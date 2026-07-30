@@ -1112,6 +1112,44 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   gate green repo-wide (tenancy 270→294 tests, 19→20 files;
   architecture-fitness unchanged at 36).
 
+- **E05-T08: Tenancy workflow integration harness (2026-07-30).** An
+  in-memory harness validating the full create → invite → accept
+  workflow across repositories, `UnitOfWork`, and event publication
+  before any persistence adapter exists. New `test-support/` directory
+  (sibling to `test/`, outside the public `src/` surface — same
+  precedent as `packages/platform/test-support/`):
+  `InMemoryOrganizationRepository`/`InMemoryMembershipRepository`/
+  `InMemoryInvitationRepository` (copy-on-write `Map` storage,
+  implementing the real ports exactly), an `EventCollector` (ordered
+  capture with `expectSequence`/`expectNone`/`expectCount`/`payloadAt`),
+  and a `TenancyWorkflowHarness` wiring class exposing
+  `createOrganization`/`inviteMember`/`acceptInvitation` over one shared
+  `UnitOfWork`/`FixedClock`/`EventBus` pair. **Deliberately did not add**
+  `OrganizationRepository.findBySlug` or
+  `MembershipRepository.findByOrganizationAndUser` despite the founder
+  directive suggesting both — no scenario needs the former, and the
+  existing `findByUserId(context, userId)` already covers the latter
+  since `OrgScopedContext` supplies the organization half. 13 new
+  end-to-end tests (`test/workflow/tenancy-workflow.test.ts`): happy
+  path with exact event-sequence assertions, duplicate slug/invitation,
+  expired/revoked invitation, the full inviter-authorization matrix,
+  exactly-once invitation consumption, and three transaction-semantics
+  tests. **Proved, not just documented, a real limitation**: a dedicated
+  test wraps the real invitation repository in a `save`-throwing
+  decorator and calls `acceptInvitation` directly, confirming the
+  in-memory `UnitOfWork` provides event-staging atomicity (nothing
+  publishes until `work(tx)` returns) but no storage rollback across
+  multiple repository writes — closing that gap is `PostgresUnitOfWork`
+  (E03-T40)'s job via a real SQL transaction, out of this task's scope.
+  No Postgres adapters, no SQL, no RLS, no migrations, no Drizzle
+  schemas, no HTTP handlers, no new repository port methods, no
+  performance tuning, no dependency-injection framework. Full detail:
+  [tenancy-workflow-integration.md](docs/modules/tenancy-workflow-integration.md).
+  Full build/typecheck/lint/test/architecture-fitness/export-snapshot
+  gate green repo-wide (tenancy 294→307 tests, 20→21 files;
+  architecture-fitness unchanged at 36; export-snapshot unchanged — no
+  new public exports).
+
 <!--
 Template for release-train entries:
 

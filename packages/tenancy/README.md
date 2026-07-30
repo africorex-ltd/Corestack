@@ -49,7 +49,17 @@ src/
   infrastructure/  reserved — Postgres adapters land in E05-T21..T23
   interface/       reserved — HTTP bindings land in E05-T24..T25
   testing/         reserved — adopter-facing fakes land in E05-T28
+test-support/      in-memory repositories + workflow harness + event collector (E05-T08) — internal, project-only; not exported, not adopter-facing
 ```
+
+`test-support/` (sibling to `test/`, outside `src/`) and the reserved
+`src/testing/` barrel serve different audiences and are not in tension:
+`test-support/` is this package's own internal test scaffolding, invisible
+to adopters and outside every architecture-fitness rule that scans `src/`;
+`src/testing/` is reserved for E05-T28's adopter-facing fixtures, exported
+through the package's public `./testing` condition. See
+[tenancy-workflow-integration.md](../../docs/modules/tenancy-workflow-integration.md)'s
+"Why `test-support/`, not `src/testing/`" section.
 
 Every module — first-party or third-party — exports one factory,
 `createTenancyModule(deps, config) => ModuleInstance`, per the module
@@ -58,10 +68,28 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08)
 
 What exists today:
 
+- **The Tenancy workflow integration harness** (`test-support/`, E05-T08)
+  — `InMemoryOrganizationRepository`/`MembershipRepository`/
+  `InvitationRepository` (copy-on-write storage, implementing the real
+  ports exactly, no new port methods added), an `EventCollector` that
+  captures every published event in order with sequence/count/payload
+  assertions, and a `TenancyWorkflowHarness` wiring class exposing
+  `createOrganization`/`inviteMember`/`acceptInvitation` over one shared
+  `UnitOfWork`/`FixedClock`/`EventBus` — so a full create → invite →
+  accept workflow runs in memory, before any Postgres adapter exists.
+  13 end-to-end tests (`test/workflow/tenancy-workflow.test.ts`) cover the
+  happy path, duplicate slug/invitation, expiry, revocation, the
+  inviter-authorization matrix, exactly-once invitation consumption, and
+  transaction semantics — including a dedicated test proving (not just
+  documenting) that the in-memory `UnitOfWork` provides event-staging
+  atomicity but **not** storage rollback across multiple repository
+  writes. Deliberately not a DI framework, no new repository port
+  methods, no performance tuning (Section 12). Full detail:
+  [docs/modules/tenancy-workflow-integration.md](../../docs/modules/tenancy-workflow-integration.md).
 - **The `acceptInvitation` use case** — the membership-admission
   workflow: verifies the invitation exists and is `PENDING`
   (`InvitationNotFoundError`/`InvitationNotPendingError`), enforces
@@ -186,7 +214,7 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- 20 test files (294 tests) covering the module scaffold (compilation
+- 21 test files (307 tests) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -206,7 +234,8 @@ What exists today:
   not-pending for accepted/revoked, expiry enforcement with persistence
   and event assertions, duplicate active membership, event
   publication, `UnitOfWork` usage) — all against in-memory test doubles
-  only.
+  only — plus the 13 end-to-end workflow tests described above
+  (E05-T08).
 
 ## What is intentionally **not** implemented
 
@@ -298,10 +327,18 @@ What exists today:
 
 ## Next task
 
-**E05-T08**: not yet specified by the founder directive sequence. Not started.
+**E05-T09**: not yet specified by the founder directive sequence. Not started.
+Per Section 13 of the E05-T08 directive, Postgres persistence/RLS/
+migrations/Drizzle schemas/HTTP handlers are explicitly **not** to be
+started until an E05-T09 prompt arrives.
 
 ## See also
 
+- [docs/modules/tenancy-workflow-integration.md](../../docs/modules/tenancy-workflow-integration.md) —
+  the in-memory workflow harness (E05-T08): repository behavior, event
+  capture, a full happy-path sequence diagram, transaction-semantics
+  verification (including the proven storage-rollback limitation), a
+  failure-semantics table, and non-goals.
 - [docs/modules/accept-invitation-usecase.md](../../docs/modules/accept-invitation-usecase.md) —
   the `acceptInvitation` use case's flow, sequence diagram, the
   authorization matrix (shared with `inviteMember`), expiry enforcement,

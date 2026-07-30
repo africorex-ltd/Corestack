@@ -230,3 +230,47 @@
   no SQL, no RLS, no migrations, no HTTP handlers, no email delivery, no
   invitation tokens, no `User`/`Session`/`Auth` module — all explicitly
   out of scope per this task's founder directive.
+
+### In-memory Tenancy workflow integration harness (E05-T08)
+
+- New `test-support/` directory (sibling to `test/`, not part of the
+  public `src/` surface — same precedent as `packages/platform/test-support/`):
+  `InMemoryOrganizationRepository`, `InMemoryMembershipRepository`,
+  `InMemoryInvitationRepository` (copy-on-write `Map` storage — `save()`
+  replaces the map rather than mutating it, so arrays returned by prior
+  `list*`/`find*` calls stay valid), an `EventCollector` (captures every
+  published event in order; `expectSequence`/`expectNone`/`expectCount`/
+  `payloadAt`), and a `TenancyWorkflowHarness` class wiring all three
+  repositories, a `FixedClock`, one shared `UnitOfWork`/`EventBus` pair,
+  and `createOrganization`/`inviteMember`/`acceptInvitation` as thin
+  typed wrappers. `tsconfig.json`'s `include` gained `"test-support"`.
+  Full detail:
+  [docs/modules/tenancy-workflow-integration.md](../../docs/modules/tenancy-workflow-integration.md).
+- 13 new end-to-end tests (`test/workflow/tenancy-workflow.test.ts`):
+  happy path (create → invite → accept, exact event sequence asserted),
+  duplicate slug, duplicate pending invitation, expired invitation,
+  revoked invitation, the full inviter-authorization matrix (unauthorized
+  inviter, admin→member, admin cannot invite admin, owner→admin),
+  exactly-once invitation consumption/membership creation, and three
+  transaction-semantics tests (Section 7).
+- **Deliberately did not add `OrganizationRepository.findBySlug` or
+  `MembershipRepository.findByOrganizationAndUser`** despite the founder
+  directive's Section 3 suggesting both: no scenario resolves an
+  organization by slug (`createOrganization` returns the id directly),
+  and the existing `findByUserId(context: OrgScopedContext, userId)`
+  already *is* "find by organization and user" since `context`
+  carries the organization half — a second method would duplicate it.
+- **Proved, not just documented, a real transaction-semantics
+  limitation**: a dedicated test wraps the real
+  `InMemoryInvitationRepository` in a `save`-throwing decorator and calls
+  `acceptInvitation` directly, confirming the in-memory `UnitOfWork`
+  provides event-staging atomicity (nothing publishes until `work(tx)`
+  returns) but **no storage rollback** — a mid-flow throw after
+  `membershipRepository.save` leaves that write persisted. Closing this
+  gap is `PostgresUnitOfWork` (E03-T40)'s job via a real SQL transaction,
+  out of this task's scope.
+- 1 new test file (tenancy package: 294→307 total tests; 20→21 files). No
+  Postgres adapters, no SQL, no RLS, no migrations, no Drizzle schemas,
+  no HTTP handlers, no new repository port methods, no performance
+  tuning, no dependency-injection framework — all explicitly out of
+  scope per this task's founder directive.
