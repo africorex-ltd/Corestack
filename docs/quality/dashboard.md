@@ -2,18 +2,32 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T01 (Tenancy module
-> scaffold) complete**: new `@corestack/tenancy` package — module factory,
-> 3 repository ports (contract-only), event contracts, a
-> `ModuleConfigSpec` with defaults, a schema-only migration, 3 tests (8
-> assertions). Full build/typecheck/lint/test/architecture-fitness/export-
-> snapshot gate green repo-wide. Found and documented one confirmed
-> platform-framework limitation along the way (`ModuleConfigSpec<T>`
-> cannot express an optional or coerced config field under this repo's
-> `exactOptionalPropertyTypes`) — resolved module-locally, recorded in
+> estimated. Last update: **2026-07-30** — **E05-T02 (Organization domain
+> model) complete**: pure domain aggregate in `@corestack/tenancy` —
+> `OrganizationId`/`OrganizationSlug` value objects, `OrganizationStatus`
+> (3 states, `DELETED` terminal), explicit methods (`create`/`rename`/
+> `suspend`/`reactivate`/`delete`), domain events collected via
+> `pullDomainEvents()`/`clearDomainEvents()`. No persistence, no I/O, no
+> kernel port dependency. Superseded the E05-T01 placeholder
+> `OrganizationRecord`. Full detail:
+> [organization-domain.md](../modules/organization-domain.md). Tenancy
+> package tests 8→79 (+71; 3→10 files). Full build/typecheck/lint/test/
+> architecture-fitness/export-snapshot gate green repo-wide. One open
+> reconciliation flagged, not resolved here: this task's 3-state status
+> model and no `kind` field vs. `tenancy-contract.md`'s 4-state
+> (`pending_deletion`/`purged`) blueprint reference — tracked in
+> organization-domain.md's non-goals for whichever future task
+> (E05-T13/T21) needs to decide. `Membership`/`Invitation` aggregates
+> intentionally **not** started (E05-T03/T04, next). Prior update:
+> **E05-T01 (Tenancy module scaffold) complete**: new `@corestack/tenancy`
+> package — module factory, 3 repository ports (contract-only), event
+> contracts, a `ModuleConfigSpec` with defaults, a schema-only migration.
+> Found and documented one confirmed platform-framework limitation along
+> the way (`ModuleConfigSpec<T>` cannot express an optional or coerced
+> config field under this repo's `exactOptionalPropertyTypes`) — resolved
+> module-locally, recorded in
 > [e05-readiness-friction-log.md](../engineering/e05-readiness-friction-log.md).
-> Organization/Membership/Invitation aggregates intentionally **not**
-> started (E05-T02, next). Prior update: **E05 Readiness Gate complete,
+> Prior update: **E05 Readiness Gate complete,
 > verdict GO** (full report:
 > [e05-readiness-gate-report.md](../engineering/e05-readiness-gate-report.md);
 > friction log:
@@ -120,7 +134,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | 60 files / **469 tests** — re-measured 2026-07-30 via direct `vitest run` per package (kernel 9 files/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 unit + 14/97 integration · example module 2/3 unit + 1/4 integration · **tenancy 3/8 new**); architecture-fitness gained 5 tests (31→36) from tenancy's new manifest-rules/tenant-isolation coverage — every fitness suite scans `packages/*` dynamically, no config change needed |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 49 files / **444 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 7/79** (up from 3/8 — 4 new domain test files for the `Organization` aggregate: value objects, status transitions, invariants, event emission/ordering, immutability). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T02): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T02 added no new package/manifest surface — `organization.ts` isn't repository-named, so the tenant-isolation rule doesn't touch it) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

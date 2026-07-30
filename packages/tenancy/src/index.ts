@@ -1,4 +1,23 @@
-export type { OrganizationRecord } from "./domain/organization.js";
+export { Organization } from "./domain/organization.js";
+export type { CreateOrganizationInput } from "./domain/organization.js";
+
+export { OrganizationId } from "./domain/organization-id.js";
+export { OrganizationSlug } from "./domain/organization-slug.js";
+
+export {
+  OrganizationStatus,
+  isLegalOrganizationStatusTransition,
+} from "./domain/organization-status.js";
+
+export type {
+  OrganizationDomainEvent,
+  OrganizationCreatedEvent,
+  OrganizationRenamedEvent,
+  OrganizationSuspendedEvent,
+  OrganizationReactivatedEvent,
+  OrganizationDeletedEvent,
+} from "./domain/organization-events.js";
+
 export type { MembershipRecord } from "./domain/membership.js";
 export type { InvitationRecord } from "./domain/invitation.js";
 

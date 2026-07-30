@@ -881,6 +881,35 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   [e05-readiness-friction-log.md](docs/engineering/e05-readiness-friction-log.md)
   for whoever picks up the platform-level decision later.
 
+- **E05-T02: `Organization` domain model (2026-07-30).** The first real
+  business aggregate in CoreStack — pure domain model only, no
+  persistence, no I/O, no kernel port dependency. Ships in
+  `@corestack/tenancy`: `OrganizationId`/`OrganizationSlug` value objects
+  (validated once at construction, immutable, value equality);
+  `OrganizationStatus` (`ACTIVE`/`SUSPENDED`/`DELETED`, `DELETED`
+  terminal, no self-transitions — calling `suspend()` while already
+  suspended is an error, not a no-op); the `Organization` aggregate itself
+  (private fields, explicit `create`/`rename`/`suspend`/`reactivate`/
+  `delete` methods only — no public mutation); domain events
+  (`OrganizationCreated`/`Renamed`/`Suspended`/`Reactivated`/`Deleted`,
+  deliberately **not** kernel `DomainEvent`s — no `actor`/`correlationId`/
+  `causationId`, since the aggregate has no `Context`) collected via
+  `pullDomainEvents()`/`clearDomainEvents()`. 71 new tests (4 new files):
+  value objects, status transitions, invariants (name length, deleted-is-
+  terminal, rename-to-same-value is a no-op, monotonic timestamps), event
+  emission/ordering, immutability. Full detail:
+  [organization-domain.md](docs/modules/organization-domain.md).
+  Superseded the E05-T01 placeholder `OrganizationRecord`; updated
+  `OrganizationRepository`'s port signatures to return the real aggregate.
+  **No `Membership`/`Invitation` aggregate, no commands, no persistence,
+  no RLS, no HTTP** — explicitly out of scope, reserved for E05-T03
+  onward. Full build/typecheck/lint/test/architecture-fitness/export-
+  snapshot gate green repo-wide (tenancy 8→79 tests). One open
+  reconciliation flagged, not resolved: this task's 3-state status model
+  and no `kind` field vs. `tenancy-contract.md`'s 4-state
+  (`pending_deletion`/`purged`) blueprint reference — tracked in
+  `organization-domain.md`'s non-goals.
+
 <!--
 Template for release-train entries:
 

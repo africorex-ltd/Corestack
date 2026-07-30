@@ -1,9 +1,9 @@
 /**
- * Placeholder record shape — **not** the `Invitation` aggregate. See the
- * identical caveat on `OrganizationRecord` (./organization.ts): the real
+ * Placeholder record shape — **not** the `Invitation` aggregate. The real
  * aggregate (single-use token hashing, expiry, the never-owner rule) ships
- * in E05-T04. `tokenHash` here is a bare field, not a hashing scheme —
- * that choice belongs to E05-T04, not this scaffold.
+ * in E05-T04, following the same pattern `Organization` (./organization.ts,
+ * E05-T02) established. `tokenHash` here is a bare field, not a hashing
+ * scheme — that choice belongs to E05-T04, not this scaffold.
  */
 export interface InvitationRecord {
   readonly id: string;

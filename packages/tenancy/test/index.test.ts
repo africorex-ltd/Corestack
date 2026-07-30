@@ -23,4 +23,12 @@ describe("@corestack/tenancy compiles and its declared exports resolve", () => {
     expect(tenancy.MEMBER_UPDATED_EVENT).toBe("member.updated");
     expect(tenancy.MEMBER_REMOVED_EVENT).toBe("member.removed");
   });
+
+  it("exposes the Organization aggregate and its value objects (E05-T02)", () => {
+    expect(typeof tenancy.Organization.create).toBe("function");
+    expect(typeof tenancy.OrganizationId.from).toBe("function");
+    expect(typeof tenancy.OrganizationSlug.from).toBe("function");
+    expect(tenancy.OrganizationStatus.Active).toBe("ACTIVE");
+    expect(typeof tenancy.isLegalOrganizationStatusTransition).toBe("function");
+  });
 });

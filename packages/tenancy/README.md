@@ -38,7 +38,7 @@ and dependency rule as `@corestack/platform` and
 
 ```
 src/
-  domain/          placeholder record shapes only (see "Not implemented" below)
+  domain/          Organization aggregate (E05-T02); Membership/Invitation still placeholders
   application/     repository ports, event contracts, config spec, module factory
   infrastructure/  reserved — Postgres adapters land in E05-T21..T23
   interface/       reserved — HTTP bindings land in E05-T24..T25
@@ -52,10 +52,19 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold only (E05-T01)
+## Current status: scaffold (E05-T01) + Organization domain model (E05-T02)
 
 What exists today:
 
+- **The `Organization` aggregate** — a pure domain model: `OrganizationId`/
+  `OrganizationSlug` value objects, an `OrganizationStatus` enum
+  (`ACTIVE`/`SUSPENDED`/`DELETED`, `DELETED` terminal), explicit methods
+  (`create`/`rename`/`suspend`/`reactivate`/`delete`), domain events
+  collected via `pullDomainEvents()`/`clearDomainEvents()`. No
+  persistence, no I/O, no kernel port dependency. Full detail:
+  [docs/modules/organization-domain.md](../../docs/modules/organization-domain.md).
+  `Membership`/`Invitation` are still bare placeholder record types
+  (E05-T03/T04).
 - The package itself: manifest, tsconfig, `vitest.config.ts` (the first
   bare one in this repo — see the file's own comment), LICENSE, this
   README.
@@ -81,16 +90,25 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- Three tests: compilation smoke test, module-registration test, export-
-  surface snapshot test. No behavior tests — there is no behavior yet.
+- 7 test files (79 tests) covering the module scaffold (compilation
+  smoke test, module-registration test, export-surface snapshot test) and
+  the `Organization` aggregate (value objects, status transitions,
+  invariants, event emission/ordering, immutability).
 
 ## What is intentionally **not** implemented
 
-- **The `Organization`/`Membership`/`Invitation` aggregates.** `src/domain/`
-  contains bare placeholder record types (`OrganizationRecord`, etc.) with
-  zero invariant enforcement, explicitly marked as such in their own file
-  comments. The real aggregates — name/slug validation, the status
-  machine, the never-owner rule — ship in **E05-T02–T04**.
+- **The `Membership`/`Invitation` aggregates.** `src/domain/membership.ts`
+  and `invitation.ts` are still bare placeholder record types with zero
+  invariant enforcement, explicitly marked as such in their own file
+  comments. Ship in **E05-T03/T04**, following the pattern `Organization`
+  (E05-T02) established.
+- **`Organization`'s `kind` field and the four-state, two-phase-delete
+  status machine** (`pending_deletion`/`purged`) from
+  `tenancy-contract.md`'s blueprint reference — not modeled by the
+  current three-state (`ACTIVE`/`SUSPENDED`/`DELETED`) aggregate. Open
+  reconciliation, tracked in
+  [organization-domain.md](../../docs/modules/organization-domain.md)'s
+  non-goals.
 - **Every command** (`CreateOrganization`, `InviteMember`,
   `AcceptInvitation`, …) — none exist. `TenancyUseCases` is
   `Record<string, never>`.
@@ -119,11 +137,13 @@ What exists today:
 
 ## Next task
 
-**E05-T02**: the `Organization` aggregate (name/slug validation, `kind`,
-the status machine). Not started by this package.
+**E05-T03**: the `Membership` aggregate. Not started.
 
 ## See also
 
+- [docs/modules/organization-domain.md](../../docs/modules/organization-domain.md) —
+  the `Organization` aggregate's boundaries, invariants, transition
+  diagram, and event list.
 - [docs/modules/tenancy-contract.md](../../docs/modules/tenancy-contract.md) —
   the full future public contract this scaffold builds toward.
 - [docs/security/how-to-build-a-tenant-safe-feature.md](../../docs/security/how-to-build-a-tenant-safe-feature.md) —

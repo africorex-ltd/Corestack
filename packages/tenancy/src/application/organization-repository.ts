@@ -1,6 +1,6 @@
 import type { OrgScopedContext } from "@corestack/platform";
 
-import type { OrganizationRecord } from "../domain/organization.js";
+import type { Organization } from "../domain/organization.js";
 
 /**
  * Port only — no persistence implementation (E05-T21 builds the Postgres
@@ -14,8 +14,12 @@ import type { OrganizationRecord } from "../domain/organization.js";
  * resolved *some* organization context to call this port) without
  * pre-deciding how `organizations` itself will be scoped at the database
  * layer.
+ *
+ * Returns the real `Organization` aggregate (E05-T02), not a bare record —
+ * a repository reconstitutes the aggregate from persisted rows, it doesn't
+ * hand back an anemic DTO.
  */
 export interface OrganizationRepository {
-  findById(context: OrgScopedContext, organizationId: string): Promise<OrganizationRecord | null>;
-  listForContext(context: OrgScopedContext): Promise<readonly OrganizationRecord[]>;
+  findById(context: OrgScopedContext, organizationId: string): Promise<Organization | null>;
+  listForContext(context: OrgScopedContext): Promise<readonly Organization[]>;
 }
