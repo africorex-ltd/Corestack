@@ -68,10 +68,29 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10)
 
 What exists today:
 
+- **Row-Level Security policy design + migration** (`src/infrastructure/postgres/rls/`,
+  `migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10) —
+  resolves the `organizations` visibility question left open by E05-T09:
+  direct (id-keyed) visibility, not membership-driven
+  ([ADR-0024](../../docs/adr/0024-tenancy-organizations-rls-direct-visibility.md)).
+  `memberships`/`invitations` use standard org-scoped policies
+  (`organization_id = current_setting('app.current_org')::uuid`);
+  `organizations` keys the identical predicate off `id` instead, applied
+  uniformly to `SELECT`/`INSERT`/`UPDATE` (no special-cased creation
+  bypass). `DELETE` is never granted or policied for the app role on any
+  of the three tables — every terminal state transition is a soft-delete
+  `status` `UPDATE`. Every table has both `ENABLE` and `FORCE ROW LEVEL
+  SECURITY`. The migration's `CREATE TABLE` statements were generated via
+  `drizzle-kit generate` against the frozen E05-T09 schema and
+  hand-verified column-for-column; its RLS/GRANT statements are
+  hand-authored but checked byte-for-byte against the TypeScript
+  generator functions via a dedicated consistency test. No repository
+  adapter, no SQL query methods, no HTTP handlers. Full detail:
+  [docs/modules/tenancy-rls-design.md](../../docs/modules/tenancy-rls-design.md).
 - **The Postgres persistence schema** (`src/infrastructure/postgres/schema/`,
   E05-T09) — Drizzle table definitions for `organizations`/`memberships`/
   `invitations`, freezing the database shape before any repository
@@ -86,10 +105,8 @@ What exists today:
   email)`. `organizations` uses a plain (non-partial) `UNIQUE(slug)` —
   unlike `tenancy-contract.md`'s 4-state blueprint, the implemented
   3-state `Organization` model has no `purged` state to key a partial
-  index off of. No repository methods, no SQL migrations beyond the
-  schema definitions, no RLS policies (comments mark exactly where a
-  future RLS task attaches, including the still-open `organizations`
-  question `OrganizationRepository`'s own port doc already flagged).
+  index off of. No repository methods, no SQL query code — RLS policies
+  now exist (E05-T10, see below), but nothing queries through them yet.
   `drizzle-orm` is a peer + dev dependency only, not re-exported from any
   package entry point yet. Full detail:
   [docs/modules/tenancy-schema-design.md](../../docs/modules/tenancy-schema-design.md)
@@ -236,8 +253,9 @@ What exists today:
   (`resolveTenancyConfig`) both live one layer outside the schema as a
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
-  and a README explaining the RLS-DDL bridge gap it defers.
-- 22 test files (330 tests) covering the module scaffold (compilation
+  and the real table + RLS migration
+  (`migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10).
+- 24 test files (377 tests) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -258,9 +276,16 @@ What exists today:
   and event assertions, duplicate active membership, event
   publication, `UnitOfWork` usage) — all against in-memory test doubles
   only — plus the 13 end-to-end workflow tests described above
-  (E05-T08) and 23 no-live-database schema tests (E05-T09) verifying the
+  (E05-T08), 23 no-live-database schema tests (E05-T09) verifying the
   Drizzle schema builds, enum values match the domain enums exactly, and
-  the expected unique/partial-unique indexes and foreign keys exist.
+  the expected unique/partial-unique indexes and foreign keys exist, and
+  47 no-live-database RLS/migration tests (E05-T10): 40 verifying the RLS
+  DDL generators (ENABLE/FORCE ordering, stable per-command policy names,
+  DELETE never granted/policied, `platform_full_access` present, fail-
+  closed `current_setting` usage, no bind parameters, bare — never
+  schema-qualified — column references, unsafe-identifier rejection) and
+  7 verifying the shipped migration parses cleanly and matches those same
+  generators' output byte-for-byte.
 
 ## What is intentionally **not** implemented
 
@@ -338,11 +363,11 @@ What exists today:
   invocation rather than silently succeeding — a loud placeholder, not a
   no-op, so a purge is never marked complete without a real delete once
   Tenancy owns actual data. Real deletion ships in **E05-T13**.
-- **RLS.** The migration creates the `tenancy` schema only. Table DDL,
-  roles, and RLS policies (including the open question of whether
-  `organizations`' own RLS needs a membership-join condition rather than
-  the standard pattern) are **E05-T21**'s job — see
-  `migrations/tenancy/README.md`.
+- **Repository adapters, SQL query methods, HTTP handlers reading through
+  RLS.** Table DDL and RLS policies now exist (E05-T10) — see above — but
+  nothing queries through them yet. Lands in a future repository-adapter
+  task (Section 14/15 of the E05-T10 directive: do not start this
+  automatically).
 - **HTTP interface.** `src/interface/` is a reserved, empty barrel.
   **E05-T24–T25**.
 - **Adopter-facing test fixtures.** `src/testing/` is a reserved, empty
@@ -352,13 +377,23 @@ What exists today:
 
 ## Next task
 
-**E05-T10**: not yet specified by the founder directive sequence. Not
-started. Per Section 17 of the E05-T09 directive, repository
-implementation and RLS policies are explicitly **not** to be started
-until an E05-T10 prompt arrives.
+**E05-T11**: not yet specified by the founder directive sequence. Not
+started. Per Section 15 of the E05-T10 directive, repository
+implementation is explicitly **not** to be started automatically — it
+waits for an explicit E05-T11 prompt.
 
 ## See also
 
+- [docs/modules/tenancy-rls-design.md](../../docs/modules/tenancy-rls-design.md) —
+  the RLS policy design (E05-T10): policy matrix, the `organizations`
+  direct-visibility model, fail-closed behaviour (including the
+  `app.current_org`-vs-`app.current_organization_id` reconciliation
+  note), the future anonymous-invitation-acceptance and cross-org-admin
+  non-goals, repository assumptions for a future adapter, and operational
+  considerations.
+- [docs/adr/0024-tenancy-organizations-rls-direct-visibility.md](../../docs/adr/0024-tenancy-organizations-rls-direct-visibility.md) —
+  why `organizations`' RLS uses direct (id-keyed) visibility instead of
+  membership-driven or hybrid visibility.
 - [docs/modules/tenancy-schema-design.md](../../docs/modules/tenancy-schema-design.md) —
   the Postgres schema design (E05-T09): ER diagram, index/partial-index
   rationale, deletion strategy, membership/invitation uniqueness

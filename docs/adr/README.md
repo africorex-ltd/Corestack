@@ -29,6 +29,7 @@ supersedes the old one.
 | [0021](0021-globalrepository-marker-and-tenant-fitness-rules.md) | `GlobalRepository` marker + tenant-isolation fitness rules    | Accepted |
 | [0022](0022-logger-runtime-redaction-and-error-serialization.md) | `Logger` adapters must redact sensitive fields + serialize errors | Accepted |
 | [0023](0023-tenancy-schema-text-enum-with-check-constraint.md)   | Tenancy schema enums are CHECK-constrained `text`, not native Postgres `ENUM` | Accepted |
+| [0024](0024-tenancy-organizations-rls-direct-visibility.md)      | `tenancy.organizations`' RLS uses direct (id-keyed) visibility, not membership-driven | Accepted |
 
 ## Writing an ADR
 

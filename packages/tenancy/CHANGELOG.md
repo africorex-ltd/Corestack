@@ -346,3 +346,73 @@
   migrations beyond these schema definitions, no HTTP handlers — all
   explicitly out of scope per this task's founder directive. No new
   public exports — the schema module is internal to the package.
+
+### Row-Level Security policy design + migration (E05-T10)
+
+- New `src/infrastructure/postgres/rls/` (internal — no `./postgres`
+  export condition): `buildOrgScopedTableRlsDdl` (for `memberships`/
+  `invitations`) and `buildOrganizationsRlsDdl` (for `organizations`) —
+  pure SQL-text generators, no DB dependency, mirroring
+  `@corestack/platform`'s `buildTenantIsolationDdl` (E03-T30) but
+  deliberately not reusing it verbatim: per-command policies
+  (`SELECT`/`INSERT`/`UPDATE`) so `DELETE` can be denied outright, rather
+  than one blanket `FOR ALL` policy per role. `TENANCY_APP_ROLE`
+  (`tenancy_app`) / `TENANCY_PLATFORM_ROLE` (`tenancy_platform`) role
+  names, and `ensureTenancyModuleRoles` — idempotent role bootstrap
+  (delegates to `@corestack/platform`'s `ensureTenancyRoles`) plus the
+  `GRANT USAGE ON SCHEMA platform`/`GRANT INSERT ON platform.outbox`
+  grants `PostgresUnitOfWork`'s event staging needs. Full detail:
+  [docs/modules/tenancy-rls-design.md](../../docs/modules/tenancy-rls-design.md).
+- **[ADR-0024](../../docs/adr/0024-tenancy-organizations-rls-direct-visibility.md):**
+  resolves the `organizations` visibility question E05-T09 left open.
+  Direct (id-keyed) visibility — `id =
+  current_setting('app.current_org')::uuid` — not membership-driven or
+  hybrid, both of which would require a currently-nonexistent
+  user-identity session variable. The identical predicate is used for
+  `INSERT` as for `SELECT`/`UPDATE`: no special-cased "no org yet"
+  creation bypass, since `Organization.id` is application-generated
+  before persistence and the future adapter is expected to set
+  `app.current_org` from the aggregate's own id for every `save` call.
+- **`app.current_org`, not the founder directive's literal
+  `app.current_organization_id`.** Every policy uses the platform's
+  existing, sole, already-certified session variable — introducing a
+  second, differently-named one would itself violate the same
+  directive's "do not introduce a new mechanism" instruction. Flagged
+  explicitly for founder confirmation, not silently decided — see the
+  design doc's "A note on the session variable's name."
+- **DELETE is never granted or policied for `tenancy_app`**, on any of
+  the three tables — defense in depth alongside `FORCE ROW LEVEL
+  SECURITY`, since no aggregate method ever performs a physical
+  `DELETE` (every terminal transition is a soft-delete `status` UPDATE).
+  `tenancy_platform` is granted `SELECT` only on all three tables,
+  matching `examples/acme-crm-module`'s own precedent.
+- New migration `migrations/tenancy/0002_create-tenancy-tables.sql`:
+  `CREATE TABLE` statements generated via `drizzle-kit generate` against
+  the frozen E05-T09 schema and hand-verified column-for-column; RLS/
+  GRANT statements hand-authored but checked byte-for-byte
+  (whitespace-normalized) against the TypeScript generators via
+  `test/infrastructure/migration-rls-consistency.test.ts`. Every table
+  gets both `ENABLE` and `FORCE ROW LEVEL SECURITY` in this same
+  migration — never a moment any of the three tables exists without RLS
+  already attached.
+- **Fixed a real bug found during review**: every `CHECK` constraint and
+  `CREATE POLICY` predicate initially referenced its column
+  schema/table-qualified (e.g. `tenancy.organizations.status`) — not
+  valid Postgres syntax in either position (a three-part dotted name
+  parses as `database.schema.object`, not `schema.table.column`).
+  Fixed in the generators, the migration, and the E05-T09 `sqlInList`
+  schema helper (which had the identical latent issue — Drizzle's own
+  serializer renders an interpolated column reference fully qualified
+  in this position) to use bare column names throughout, plus a
+  regression test asserting no `tenancy.\w+.\w+`-shaped reference
+  appears in any generated statement.
+- 47 new tests: 40 in `test/infrastructure/rls-policies.test.ts` (DDL-
+  level, no live database) and 7 in
+  `test/infrastructure/migration-rls-consistency.test.ts` (parses the
+  real migration file via `@corestack/platform`'s `parseMigrationFile`
+  and cross-checks its text against the generators) — tenancy package:
+  330→377 total tests; 22→24 files. No repository adapters, no SQL query
+  methods, no HTTP handlers, no anonymous invitation acceptance, no new
+  cross-organization admin bypasses beyond the existing
+  `platform_full_access` pattern — all explicitly out of scope per this
+  task's founder directive.

@@ -1200,6 +1200,50 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   fitness unchanged at 36; export-snapshot unchanged — no new public
   exports).
 
+- **E05-T10: Tenancy Row-Level Security policy design + migration
+  (2026-07-30).** Resolves the `organizations` visibility question
+  E05-T09 left open. New `src/infrastructure/postgres/rls/` (internal):
+  per-command RLS policy generators for `memberships`/`invitations`
+  (standard org-scoping) and `organizations` (direct, id-keyed
+  visibility), plus `ensureTenancyModuleRoles` (idempotent
+  `tenancy_app`/`tenancy_platform` role + grant bootstrap).
+  **[ADR-0024](docs/adr/0024-tenancy-organizations-rls-direct-visibility.md):**
+  `organizations` uses direct (id-keyed) visibility — `id =
+  current_setting('app.current_org')::uuid`, identical across
+  `SELECT`/`INSERT`/`UPDATE` with no special-cased creation bypass —
+  rather than membership-driven or hybrid visibility, both of which
+  would require a currently-nonexistent user-identity session variable.
+  Uses the platform's existing `app.current_org` session variable, not
+  the founder directive's literal `app.current_organization_id` name —
+  flagged explicitly for founder confirmation rather than silently
+  decided (introducing a second, differently-named variable would itself
+  violate the same directive's "do not introduce a new mechanism"
+  instruction). `DELETE` is never granted or policied for the app role on
+  any of the three tables (defense in depth alongside `FORCE ROW LEVEL
+  SECURITY`); the platform role is granted `SELECT` only, matching
+  `examples/acme-crm-module`'s precedent. New migration
+  `migrations/tenancy/0002_create-tenancy-tables.sql`: `CREATE TABLE`
+  statements generated via `drizzle-kit generate` against the frozen
+  E05-T09 schema and hand-verified; RLS/GRANT statements hand-authored
+  but checked byte-for-byte against the TypeScript generators via a
+  dedicated consistency test. **Fixed a real bug found during review**:
+  every `CHECK` constraint and RLS predicate initially referenced its
+  column schema/table-qualified (e.g. `tenancy.organizations.status`) —
+  the three-part dotted form is rejected in both positions (Postgres
+  parses it as `database.schema.object`, not `schema.table.column`), and
+  RLS predicates specifically also break under query aliasing even where
+  a qualified name would parse — corrected to bare column names
+  throughout, including a latent instance of the same issue in the
+  E05-T09 `sqlInList` schema helper. 47 new tests (40 DDL-level policy
+  tests, 7 migration-consistency tests), no live database required. Full
+  detail: [tenancy-rls-design.md](docs/modules/tenancy-rls-design.md). No
+  repository adapters, no SQL query methods, no HTTP handlers, no
+  anonymous invitation acceptance, no new cross-organization admin
+  bypasses. Full build/typecheck/lint/test/architecture-fitness/
+  export-snapshot gate green repo-wide (tenancy 330→377 tests, 22→24
+  files; architecture-fitness unchanged at 36; export-snapshot unchanged
+  — no new public exports).
+
 <!--
 Template for release-train entries:
 

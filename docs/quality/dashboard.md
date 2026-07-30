@@ -2,7 +2,42 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T09 (Tenancy Postgres
+> estimated. Last update: **2026-07-30** — **E05-T10 (Tenancy Row-Level
+> Security policy design + migration) complete**: resolves the
+> `organizations` visibility question E05-T09 left open. New
+> `src/infrastructure/postgres/rls/` (internal): per-command RLS policy
+> generators for `memberships`/`invitations` (standard org-scoping) and
+> `organizations` (direct, id-keyed visibility), plus
+> `ensureTenancyModuleRoles` (idempotent role/grant bootstrap).
+> **[ADR-0024](../adr/0024-tenancy-organizations-rls-direct-visibility.md):**
+> `organizations` uses direct visibility — `id =
+> current_setting('app.current_org')::uuid`, identical across
+> `SELECT`/`INSERT`/`UPDATE`, no special-cased creation bypass — over
+> membership-driven/hybrid visibility, both of which need a
+> currently-nonexistent user-identity session variable. Uses the
+> platform's existing `app.current_org`, not the founder directive's
+> literal `app.current_organization_id` — flagged for founder
+> confirmation, not silently decided. `DELETE` never granted or policied
+> for the app role on any of the three tables; platform role granted
+> `SELECT` only. New migration
+> `migrations/tenancy/0002_create-tenancy-tables.sql`: `CREATE TABLE`
+> statements generated via `drizzle-kit generate` against the frozen
+> E05-T09 schema and hand-verified; RLS/GRANT statements checked
+> byte-for-byte against the TypeScript generators via a dedicated
+> consistency test. **Fixed a real bug found during review**: every
+> `CHECK` constraint and RLS predicate initially referenced its column
+> schema/table-qualified (e.g. `tenancy.organizations.status`) — invalid
+> Postgres syntax in both positions — corrected to bare column names
+> throughout, including a latent instance in the E05-T09 `sqlInList`
+> schema helper. 47 new no-live-database tests (40 DDL-level, 7
+> migration-consistency). Full detail:
+> [tenancy-rls-design.md](../modules/tenancy-rls-design.md). No
+> repository adapters, no SQL query methods, no HTTP handlers. Tenancy
+> package tests 330→377 (+47, 22→24 files). Full
+> build/typecheck/lint/test/architecture-fitness/export-snapshot gate
+> green repo-wide (architecture-fitness unchanged at 36; export-snapshot
+> unchanged — no new public exports this task). Prior update:
+> **2026-07-30** — **E05-T09 (Tenancy Postgres
 > schema design) complete**: freezes the tenancy database shape before any
 > repository adapter is built. New `src/infrastructure/postgres/schema/`
 > (internal, no `./postgres` package export yet): Drizzle table
@@ -337,7 +372,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 64 files / **695 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 22/330** (up from 21/307, +23 — 1 new test file, `test/infrastructure/schema.test.ts`: schema builds, column not-null/primary-key shape, enum values match the domain enums exactly, unique/partial-unique indexes and foreign keys exist, no bind-parameter placeholder in any CHECK/partial-index expression, no `token_hash` column on `invitations`). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T09): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T09 added no new package/manifest surface) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 66 files / **742 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 24/377** (up from 22/330, +47 — 2 new test files: `test/infrastructure/rls-policies.test.ts` (40, DDL-level RLS generator checks — no live database) and `test/infrastructure/migration-rls-consistency.test.ts` (7, cross-checks the shipped migration against those same generators)). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T10): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T10 added no new package/manifest surface) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

@@ -22,16 +22,25 @@ async function lintAt(virtualPath, code) {
 const ruleIds = (messages) => messages.map((m) => m.ruleId);
 
 describe("layer boundaries", () => {
-  it("domain may not import Node builtins", async () => {
-    const messages = await lintAt(
-      "packages/fixture/src/domain/entity.ts",
-      'import { readFileSync } from "node:fs";\nexport const x = readFileSync;\n',
-    );
-    expect(ruleIds(messages)).toContain("no-restricted-imports");
-    expect(messages.find((m) => m.ruleId === "no-restricted-imports")?.message).toMatch(
-      /runtime-agnostic/,
-    );
-  });
+  it(
+    "domain may not import Node builtins",
+    async () => {
+      const messages = await lintAt(
+        "packages/fixture/src/domain/entity.ts",
+        'import { readFileSync } from "node:fs";\nexport const x = readFileSync;\n',
+      );
+      expect(ruleIds(messages)).toContain("no-restricted-imports");
+      expect(messages.find((m) => m.ruleId === "no-restricted-imports")?.message).toMatch(
+        /runtime-agnostic/,
+      );
+    },
+    // First lint call in this file pays ESLint's cold-start config/parser
+    // resolution cost — observed ~2s standalone, but can exceed the default
+    // 5000ms timeout under heavy CPU contention (e.g. `turbo run test`
+    // running all packages in parallel). Not a correctness issue with the
+    // rule itself.
+    15000,
+  );
 
   it("domain may not import outer layers", async () => {
     const messages = await lintAt(
