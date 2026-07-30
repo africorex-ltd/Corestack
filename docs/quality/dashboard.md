@@ -2,23 +2,39 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T02 (Organization domain
-> model) complete**: pure domain aggregate in `@corestack/tenancy` —
-> `OrganizationId`/`OrganizationSlug` value objects, `OrganizationStatus`
-> (3 states, `DELETED` terminal), explicit methods (`create`/`rename`/
-> `suspend`/`reactivate`/`delete`), domain events collected via
-> `pullDomainEvents()`/`clearDomainEvents()`. No persistence, no I/O, no
-> kernel port dependency. Superseded the E05-T01 placeholder
-> `OrganizationRecord`. Full detail:
-> [organization-domain.md](../modules/organization-domain.md). Tenancy
-> package tests 8→79 (+71; 3→10 files). Full build/typecheck/lint/test/
-> architecture-fitness/export-snapshot gate green repo-wide. One open
-> reconciliation flagged, not resolved here: this task's 3-state status
-> model and no `kind` field vs. `tenancy-contract.md`'s 4-state
+> estimated. Last update: **2026-07-30** — **E05-T03 (`createOrganization`
+> use case) complete**: the first real application service in
+> `@corestack/tenancy` — coordinates the `Organization` aggregate,
+> `OrganizationRepository`, and `UnitOfWork` event publication; contains
+> no domain rules of its own. `CreateOrganizationCommand`/
+> `CreateOrganizationResult` (a DTO, never the aggregate),
+> `DuplicateSlugError`. Whole flow (uniqueness check, aggregate creation,
+> persistence, event publication) runs inside one `UnitOfWork.run()` call;
+> depends on the generic kernel `UnitOfWork`, not `PostgresUnitOfWork` — no
+> infrastructure coupling. Full detail:
+> [create-organization-usecase.md](../modules/create-organization-usecase.md).
+> Tenancy package tests 79→94 (+15; 7→8 files). Full build/typecheck/
+> lint/test/architecture-fitness/export-snapshot gate green repo-wide
+> (architecture-fitness unchanged at 36 — no new package/manifest
+> surface). Fixed `OrganizationCreatedPayload` (E05-T01): dropped the
+> `kind` field, which the `Organization` aggregate has no equivalent of
+> and could never actually supply — the wire contract follows the domain
+> model, not the reverse. Two things flagged, not resolved: `existsBySlug`
+> is a best-effort duplicate check, not a durable uniqueness guarantee,
+> until E05-T21 adds a unique index; and `requestedBy`/`requestId` are
+> validated but not yet consumed (no owner `Membership` created, no
+> idempotency wiring) — both are `createOrganization`'s own non-goals, not
+> silent gaps. Prior update: **E05-T02 (Organization domain model)
+> complete**: pure domain aggregate — `OrganizationId`/`OrganizationSlug`
+> value objects, `OrganizationStatus` (3 states, `DELETED` terminal),
+> explicit methods (`create`/`rename`/`suspend`/`reactivate`/`delete`),
+> domain events collected via `pullDomainEvents()`/`clearDomainEvents()`.
+> Superseded the E05-T01 placeholder `OrganizationRecord`. One open
+> reconciliation flagged, not resolved: this task's 3-state status model
+> and no `kind` field vs. `tenancy-contract.md`'s 4-state
 > (`pending_deletion`/`purged`) blueprint reference — tracked in
 > organization-domain.md's non-goals for whichever future task
-> (E05-T13/T21) needs to decide. `Membership`/`Invitation` aggregates
-> intentionally **not** started (E05-T03/T04, next). Prior update:
+> (E05-T13/T21) needs to decide. Prior update:
 > **E05-T01 (Tenancy module scaffold) complete**: new `@corestack/tenancy`
 > package — module factory, 3 repository ports (contract-only), event
 > contracts, a `ModuleConfigSpec` with defaults, a schema-only migration.
@@ -134,7 +150,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 49 files / **444 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 7/79** (up from 3/8 — 4 new domain test files for the `Organization` aggregate: value objects, status transitions, invariants, event emission/ordering, immutability). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T02): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T02 added no new package/manifest surface — `organization.ts` isn't repository-named, so the tenant-isolation rule doesn't touch it) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 50 files / **459 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 8/94** (up from 7/79 — 1 new test file, `create-organization.test.ts`, 15 tests: success, duplicate slug, trimming, event publication/suppression, repository call counts, `UnitOfWork.run` usage, timestamp preservation, requestId/requestedBy validation). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T03): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T03 added no new package/manifest surface — `duplicate-slug-error.ts`/`create-organization.ts` aren't repository-named) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

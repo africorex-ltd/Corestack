@@ -143,25 +143,30 @@ empties the list. Exactly one event is recorded per successful state
 change; a no-op `rename` and every rejected call (thrown error) record
 nothing.
 
-### Event mapping (future, not built here)
+### Event mapping (built in E05-T03, for `OrganizationCreated` only)
 
-A future use case (E05-T07 onward) will:
+`createOrganization` (E05-T03) is the first use case to perform this
+mapping, for the creation path only:
 
-1. Call an `Organization` method.
+1. Call `Organization.create(...)`.
 2. `pullDomainEvents()` to read what happened.
-3. For each domain event, construct a kernel `DomainEvent` via
-   `createEvent(...)` with a resolved `Context`/`IdGenerator`.
-4. Publish it through a `UnitOfWork`'s transaction context — the same
-   pattern `examples/acme-crm-module`'s `createContact` use case already
+3. For the `OrganizationCreated` domain event, construct a kernel
+   `DomainEvent` via `createEvent(...)` with the resolved `Context`/
+   `IdGenerator`.
+4. Publish it through the `UnitOfWork`'s transaction context — the same
+   pattern `examples/acme-crm-module`'s `createContact` use case
    demonstrates for its own domain.
-5. `clearDomainEvents()` once publishing is durable.
+5. `clearDomainEvents()` once publishing is staged.
 
 The wire-level contract this maps onto (`ORGANIZATION_CREATED_EVENT`,
-`OrganizationCreatedPayload`, etc.) was already defined in
-`packages/tenancy/src/application/events.ts` during E05-T01. The two are
-intentionally decoupled — the domain event is a fact about the aggregate,
-the wire event is what gets published — even though their payload shapes
-happen to overlap today.
+`OrganizationCreatedPayload`) was defined in
+`packages/tenancy/src/application/events.ts` during E05-T01 and adjusted
+in E05-T03 (the `kind` field was dropped — see
+[create-organization-usecase.md](create-organization-usecase.md)). The two
+remain intentionally decoupled — the domain event is a fact about the
+aggregate, the wire event is what gets published. The other four domain
+events (`Renamed`/`Suspended`/`Reactivated`/`Deleted`) have no use case
+yet and are not published anywhere.
 
 ## Examples
 

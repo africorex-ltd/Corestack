@@ -29,3 +29,12 @@ export {
 
 export type { TenancyModuleDeps, TenancyUseCases } from "./module.js";
 export { createTenancyModule } from "./module.js";
+
+export { DuplicateSlugError } from "./duplicate-slug-error.js";
+
+export type {
+  CreateOrganizationCommand,
+  CreateOrganizationResult,
+  CreateOrganizationDeps,
+} from "./create-organization.js";
+export { createOrganization } from "./create-organization.js";

@@ -11,6 +11,8 @@ import type { InvitationRepository } from "../../src/application/invitation-repo
 const organizationRepository: OrganizationRepository = {
   findById: async () => null,
   listForContext: async () => [],
+  existsBySlug: async () => false,
+  save: async () => undefined,
 };
 const membershipRepository: MembershipRepository = {
   findById: async () => null,

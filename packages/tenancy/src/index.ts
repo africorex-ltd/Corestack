@@ -52,3 +52,12 @@ export {
 
 export type { TenancyModuleDeps, TenancyUseCases } from "./application/module.js";
 export { createTenancyModule } from "./application/module.js";
+
+export { DuplicateSlugError } from "./application/duplicate-slug-error.js";
+
+export type {
+  CreateOrganizationCommand,
+  CreateOrganizationResult,
+  CreateOrganizationDeps,
+} from "./application/create-organization.js";
+export { createOrganization } from "./application/create-organization.js";

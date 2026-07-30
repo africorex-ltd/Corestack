@@ -19,11 +19,18 @@ export const MEMBER_JOINED_EVENT = "member.joined";
 export const MEMBER_UPDATED_EVENT = "member.updated";
 export const MEMBER_REMOVED_EVENT = "member.removed";
 
+/**
+ * `kind` (`personal`/`team`) was dropped from this shape in E05-T03: the
+ * `Organization` aggregate (E05-T02) has no `kind` field — see
+ * `docs/modules/organization-domain.md`'s non-goals — so a payload
+ * requiring it could never actually be constructed from a real
+ * `OrganizationCreated` domain event. The wire contract follows the
+ * domain model, not the other way around.
+ */
 export interface OrganizationCreatedPayload {
   readonly organizationId: string;
   readonly name: string;
   readonly slug: string;
-  readonly kind: "personal" | "team";
 }
 
 export interface OrganizationUpdatedPayload {

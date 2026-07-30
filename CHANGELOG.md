@@ -910,6 +910,36 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   (`pending_deletion`/`purged`) blueprint reference — tracked in
   `organization-domain.md`'s non-goals.
 
+- **E05-T03: `createOrganization` use case (2026-07-30).** The first real
+  application service in CoreStack. Coordinates the `Organization`
+  aggregate (E05-T02), `OrganizationRepository`, and `UnitOfWork` event
+  publication — contains no domain rules of its own.
+  `CreateOrganizationCommand` (`name`/`slug`/`requestedBy`/`requestId`,
+  trimmed and validated; slug format delegated to `OrganizationSlug`, not
+  re-implemented), `CreateOrganizationResult` (a DTO, never the
+  aggregate), `DuplicateSlugError` (extends `ConflictError`). The whole
+  flow — uniqueness check, aggregate creation, persistence, event
+  publication — runs inside one `UnitOfWork.run()` call; depends on the
+  generic kernel `UnitOfWork`, not `PostgresUnitOfWork`, so no
+  infrastructure coupling is introduced. Domain events are pulled via
+  `Organization.pullDomainEvents()` and mapped to a kernel `DomainEvent`
+  (`organization.created`) before publishing — the mapping
+  `organization-domain.md` (E05-T02) said a future use case would do.
+  15 new tests, in-memory test doubles only (`InMemoryUnitOfWork`,
+  `InMemoryEventBus`, fake `OrganizationRepository`). Full detail:
+  [create-organization-usecase.md](docs/modules/create-organization-usecase.md).
+  **Fixed `OrganizationCreatedPayload`** (E05-T01): dropped the `kind`
+  field — the `Organization` aggregate has no equivalent, so a payload
+  requiring it could never be constructed from a real event; the wire
+  contract now follows the domain model. **Not a hard slug-uniqueness
+  guarantee**: `existsBySlug` is best-effort until E05-T21 adds a unique
+  index — flagged explicitly in the use-case doc's non-goals, not assumed
+  solved. **No `Membership` creation, no persistence, no RLS, no HTTP, not
+  wired into `createTenancyModule`'s `useCases`** — explicitly out of
+  scope. Full build/typecheck/lint/test/architecture-fitness/export-
+  snapshot gate green repo-wide (tenancy 79→94 tests; architecture-fitness
+  unchanged at 36 — no new package/manifest surface).
+
 <!--
 Template for release-train entries:
 

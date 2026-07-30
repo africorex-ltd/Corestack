@@ -52,10 +52,18 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain model (E05-T02)
+## Current status: scaffold (E05-T01) + Organization domain + application (E05-T02/T03)
 
 What exists today:
 
+- **The `createOrganization` use case** — coordinates the `Organization`
+  aggregate, `OrganizationRepository`, and `UnitOfWork` event publication;
+  contains no domain rules of its own. Returns
+  `Result<CreateOrganizationResult, ValidationError | DuplicateSlugError>`
+  — a DTO, never the aggregate. Full detail:
+  [docs/modules/create-organization-usecase.md](../../docs/modules/create-organization-usecase.md).
+  No repository adapter, no SQL, no RLS, no HTTP — this proves the
+  domain+application vertical slice with in-memory test doubles only.
 - **The `Organization` aggregate** — a pure domain model: `OrganizationId`/
   `OrganizationSlug` value objects, an `OrganizationStatus` enum
   (`ACTIVE`/`SUSPENDED`/`DELETED`, `DELETED` terminal), explicit methods
@@ -90,10 +98,13 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- 7 test files (79 tests) covering the module scaffold (compilation
-  smoke test, module-registration test, export-surface snapshot test) and
+- 8 test files (94 tests) covering the module scaffold (compilation
+  smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
-  invariants, event emission/ordering, immutability).
+  invariants, event emission/ordering, immutability), and
+  `createOrganization` (success, duplicate slug, trimming, event
+  publication, repository call counts, `UnitOfWork` usage, timestamp
+  preservation) — all against in-memory test doubles only.
 
 ## What is intentionally **not** implemented
 
@@ -109,10 +120,22 @@ What exists today:
   reconciliation, tracked in
   [organization-domain.md](../../docs/modules/organization-domain.md)'s
   non-goals.
-- **Every command** (`CreateOrganization`, `InviteMember`,
-  `AcceptInvitation`, …) — none exist. `TenancyUseCases` is
-  `Record<string, never>`.
-- **Repository persistence.** The three ports are declared; no Postgres
+- **Every other command** (`InviteMember`, `AcceptInvitation`, `UpdateOrganization`,
+  …) — none exist. `createOrganization` is the first and, so far, only one.
+  It is also not wired into `createTenancyModule`'s `useCases` —
+  `TenancyUseCases` remains `Record<string, never>` until a future task
+  wires commands into the module factory.
+- **Creating a `Membership` for the requester as owner.**
+  `tenancy-contract.md`'s blueprint describes `CreateOrganization` as
+  atomically creating the org *and* an owner membership; this task's scope
+  stopped at the `Organization` aggregate. `requestedBy` is captured on
+  the command for this future purpose, unused today.
+- **A hard slug-uniqueness guarantee.** `existsBySlug` is a best-effort,
+  friendly-error check — nothing durable prevents two concurrent requests
+  for the same slug from both passing it until E05-T21 adds a unique
+  index. See create-organization-usecase.md's non-goals.
+- **Repository persistence.** The four port methods (`findById`,
+  `listForContext`, `existsBySlug`, `save`) are declared; no Postgres
   adapter exists. Lands in **E05-T21–T23**.
 - **Real health signals.** `health()` always returns `{ status: "healthy"
   }`. Candidate signals (tenancy-schema reachability, a
@@ -137,10 +160,13 @@ What exists today:
 
 ## Next task
 
-**E05-T03**: the `Membership` aggregate. Not started.
+**E05-T04**: not yet specified by the founder directive sequence. Not started.
 
 ## See also
 
+- [docs/modules/create-organization-usecase.md](../../docs/modules/create-organization-usecase.md) —
+  the `createOrganization` use case's flow, sequence diagram, validation
+  layers, and event mapping.
 - [docs/modules/organization-domain.md](../../docs/modules/organization-domain.md) —
   the `Organization` aggregate's boundaries, invariants, transition
   diagram, and event list.

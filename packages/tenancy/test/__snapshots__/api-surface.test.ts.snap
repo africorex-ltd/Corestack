@@ -5,6 +5,7 @@ exports[`tenancy public surface > runtime exports are intentional (./testing sub
 exports[`tenancy public surface > runtime exports are intentional (main entry) 1`] = `
 [
   "DEFAULT_TENANCY_CONFIG",
+  "DuplicateSlugError",
   "MEMBER_JOINED_EVENT",
   "MEMBER_REMOVED_EVENT",
   "MEMBER_UPDATED_EVENT",
@@ -15,6 +16,7 @@ exports[`tenancy public surface > runtime exports are intentional (main entry) 1
   "OrganizationId",
   "OrganizationSlug",
   "OrganizationStatus",
+  "createOrganization",
   "createTenancyModule",
   "isLegalOrganizationStatusTransition",
   "resolveTenancyConfig",
