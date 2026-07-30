@@ -77,3 +77,39 @@
   task) and one for `createOrganization`'s exports, which E05-T03's own
   smoke-test update missed. No repositories, no use cases, no invitation
   flows — all explicitly out of scope per this task's founder directive.
+
+### `Invitation` domain model (E05-T05)
+
+- `Invitation` aggregate: pure domain model, no persistence/I/O.
+  `InvitationId` value object (new), `OrganizationId`/`UserId` reused
+  from E05-T02/T04, and a temporary, tenancy-local `Email` value object
+  (no shared identity/contact module exists in this repo — flagged for
+  deletion once one does). `InvitationRole` (`ADMIN`/`MEMBER` only — no
+  `OWNER`, runtime-validated via `assertValidInvitationRole` since the
+  role typically originates from external input) and `InvitationStatus`
+  (`PENDING`/`ACCEPTED`/`REVOKED`/`EXPIRED` — `PENDING` the only mutable
+  state, the other three all terminal). Explicit methods
+  (`create`/`accept`/`revoke`/`expire`), domain events
+  (`InvitationCreated`/`Accepted`/`Revoked`/`Expired`) collected via
+  `pullDomainEvents()`/`clearDomainEvents()`. Full detail:
+  [docs/modules/invitation-domain.md](../../docs/modules/invitation-domain.md).
+- **No token field.** Unlike the E05-T01 scaffold's placeholder
+  `InvitationRecord` (which had a bare `tokenHash` field), this aggregate
+  has none — token generation, hashing, and delivery are explicitly
+  domain-external concerns (Section 13/14), left for a future
+  application/infrastructure task.
+- `expiresAt` must be strictly after `now` at creation; `expire()` itself
+  does not compare `now` against `expiresAt` (a policy decision left to
+  the future caller that decides an invitation has actually expired) —
+  and the same is true of `accept()`, documented explicitly so a future
+  `AcceptInvitation` use case doesn't accept a stale `PENDING` invitation
+  by omission.
+- Mechanically updated `InvitationRepository`'s two methods to return
+  `Invitation` instead of the superseded `InvitationRecord` placeholder —
+  the same forced fix `OrganizationRepository`/`MembershipRepository`
+  went through in E05-T02/T04.
+- 5 new test files, 83 new tests (tenancy package: 171→254 total; 13→18
+  files) — 82 across the new files, plus 1 in the existing
+  `index.test.ts` export smoke test. No repositories, no use cases, no
+  invitation tokens/delivery/acceptance workflow — all explicitly out of
+  scope per this task's founder directive.

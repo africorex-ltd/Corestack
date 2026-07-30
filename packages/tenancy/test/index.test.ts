@@ -46,4 +46,14 @@ describe("@corestack/tenancy compiles and its declared exports resolve", () => {
     expect(typeof tenancy.isLegalMembershipRoleTransition).toBe("function");
     expect(typeof tenancy.isLegalMembershipStatusTransition).toBe("function");
   });
+
+  it("exposes the Invitation aggregate and its value objects (E05-T05)", () => {
+    expect(typeof tenancy.Invitation.create).toBe("function");
+    expect(typeof tenancy.InvitationId.from).toBe("function");
+    expect(typeof tenancy.Email.from).toBe("function");
+    expect(tenancy.InvitationRole.Admin).toBe("ADMIN");
+    expect(tenancy.InvitationStatus.Pending).toBe("PENDING");
+    expect(typeof tenancy.assertValidInvitationRole).toBe("function");
+    expect(typeof tenancy.isLegalInvitationStatusTransition).toBe("function");
+  });
 });

@@ -2,7 +2,35 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T04 (`Membership` domain
+> estimated. Last update: **2026-07-30** — **E05-T05 (`Invitation` domain
+> model) complete**: the third real business aggregate, following
+> `Organization` (E05-T02)/`Membership` (E05-T04)'s modelling standard
+> exactly. `InvitationId` (own value object), `OrganizationId`/`UserId`
+> (reused from E05-T02/T04), and a temporary tenancy-local `Email` value
+> object (no shared identity/contact module exists in this repo —
+> confirmed by search). `InvitationRole` (`ADMIN`/`MEMBER` only — no
+> `OWNER`, runtime-validated since the role typically originates from
+> external input) and `InvitationStatus`
+> (`PENDING`/`ACCEPTED`/`REVOKED`/`EXPIRED` — `PENDING` the only mutable
+> state, the other three terminal, none transitioning to any other).
+> Explicit methods (`create`/`accept`/`revoke`/`expire`), domain events
+> collected via `pullDomainEvents()`/`clearDomainEvents()` — same local
+> pattern, no shared `AggregateRoot`. **No token field** — unlike the
+> E05-T01 scaffold's placeholder `InvitationRecord`, which had one — token
+> generation/hashing/delivery are explicitly domain-external concerns.
+> `expiresAt` must be strictly after `now` at creation; neither `expire()`
+> nor `accept()` compares `now` against `expiresAt` on the terminal call
+> itself, documented explicitly for both so a future `AcceptInvitation`
+> use case doesn't accept a stale invitation by omission. Full detail:
+> [invitation-domain.md](../modules/invitation-domain.md). Tenancy package
+> tests 171→254 (+83 — 82 across 5 new files, +1 in the existing
+> `index.test.ts` smoke test; 13→18 files). Full build/typecheck/lint/
+> test/architecture-fitness/export-snapshot gate green repo-wide
+> (architecture-fitness unchanged at 36). Mechanically updated
+> `InvitationRepository` to return `Invitation` instead of the superseded
+> `InvitationRecord` placeholder — the same forced fix
+> `OrganizationRepository`/`MembershipRepository` went through in
+> E05-T02/T04. Prior update: **E05-T04 (`Membership` domain
 > model) complete**: the second real business aggregate, following
 > `Organization` (E05-T02)'s modelling standard exactly. `MembershipId`
 > (own value object), `OrganizationId` (reused, not reimplemented), and a
@@ -173,7 +201,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 55 files / **536 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 13/171** (up from 8/94, +77 — 5 new test files totaling 75: `membership.test.ts` (37 tests: creation, owner invariants, promote/demote, invalid transitions, suspend/reactivate, remove, terminal remove, event emission/ordering, timestamps, immutability), `membership-id.test.ts`/`user-id.test.ts` (10 each), `membership-role.test.ts` (8), `membership-status.test.ts` (10); the remaining 2 were backfilled into the existing `index.test.ts` smoke test, one of which covers E05-T03's `createOrganization` export that task's own update missed). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T04): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T04 added no new package/manifest surface — none of the new `membership*.ts`/`user-id.ts` files are repository-named) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 60 files / **619 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 18/254** (up from 13/171, +83 — 5 new test files totaling 82: `invitation.test.ts` (36 tests: creation, email normalization, invalid email, past/equal expiry rejection, owner-role rejection, accept/revoke/expire, terminal transitions, event emission/ordering, timestamps, immutability), `invitation-status.test.ts` (17), `invitation-id.test.ts` (10), `email.test.ts` (13), `invitation-role.test.ts` (6); the remaining 1 was added to the existing `index.test.ts` smoke test for `Invitation`'s own exports). **Integration lanes** (separate command, unmeasured this run, unaffected by E05-T05): platform 14 files/97 tests, example module 1/4. Architecture-fitness stayed at 5/36 (E05-T05 added no new package/manifest surface — none of the new `invitation*.ts`/`email.ts` files are repository-named) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

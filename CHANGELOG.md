@@ -976,6 +976,44 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   snapshot gate green repo-wide (tenancy 94→171 tests, 8→13 files;
   architecture-fitness unchanged at 36).
 
+- **E05-T05: `Invitation` domain model (2026-07-30).** The third real
+  business aggregate, following `Organization` (E05-T02)/`Membership`
+  (E05-T04)'s modelling standard exactly. `InvitationId` (own value
+  object), `OrganizationId`/`UserId` (reused from E05-T02/T04, not
+  reimplemented), and a temporary, tenancy-local `Email` value object (no
+  `Email` exists anywhere in `@corestack/kernel`/`@corestack/platform`
+  today, confirmed by search; flagged for deletion once a real
+  identity/contact module exists). `InvitationRole` (`ADMIN`/`MEMBER`
+  only — no `OWNER`, runtime-validated since the role typically
+  originates from external input, unlike `Membership.create`'s
+  already-typed parameter) and `InvitationStatus`
+  (`PENDING`/`ACCEPTED`/`REVOKED`/`EXPIRED` — `PENDING` the only mutable
+  state, the other three all terminal, none transitioning to any other).
+  Explicit methods (`create`/`accept`/`revoke`/`expire`), domain events
+  collected via `pullDomainEvents()`/`clearDomainEvents()` — same local
+  pattern, no shared `AggregateRoot`. **No token field**: unlike the
+  E05-T01 scaffold's placeholder `InvitationRecord` (which had a bare
+  `tokenHash`), this aggregate has none — token generation, hashing, and
+  delivery are explicitly domain-external concerns. `expiresAt` must be
+  strictly after `now` at creation; neither `expire()` nor `accept()`
+  compares `now` against `expiresAt` on the terminal call itself — that
+  policy decision belongs to a future use case, documented explicitly for
+  both methods so the gap isn't discovered by omission. 83 new tests (5
+  new files, 82 tests, plus 1 in the existing `index.test.ts` export
+  smoke test): value objects, email normalization, owner-role rejection,
+  expiry-at-creation validation, status transition tables, event
+  emission/ordering, immutability. Full detail:
+  [invitation-domain.md](docs/modules/invitation-domain.md).
+  Mechanically updated `InvitationRepository`'s two methods to return the
+  real `Invitation` aggregate instead of the superseded `InvitationRecord`
+  placeholder — the same forced fix `OrganizationRepository`/
+  `MembershipRepository` went through in E05-T02/T04. **No repositories
+  (beyond the port-signature fix), no persistence, no RLS, no HTTP, no
+  invitation tokens/delivery/acceptance workflow** — explicitly out of
+  scope. Full build/typecheck/lint/test/architecture-fitness/export-
+  snapshot gate green repo-wide (tenancy 171→254 tests, 13→18 files;
+  architecture-fitness unchanged at 36).
+
 <!--
 Template for release-train entries:
 

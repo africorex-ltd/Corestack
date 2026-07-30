@@ -43,7 +43,28 @@ export type {
   MembershipRemovedEvent,
 } from "./domain/membership-events.js";
 
-export type { InvitationRecord } from "./domain/invitation.js";
+export { Invitation } from "./domain/invitation.js";
+export type { CreateInvitationInput } from "./domain/invitation.js";
+
+export { InvitationId } from "./domain/invitation-id.js";
+export { Email } from "./domain/email.js";
+
+export {
+  InvitationRole,
+  assertValidInvitationRole,
+} from "./domain/invitation-role.js";
+export {
+  InvitationStatus,
+  isLegalInvitationStatusTransition,
+} from "./domain/invitation-status.js";
+
+export type {
+  InvitationDomainEvent,
+  InvitationCreatedEvent,
+  InvitationAcceptedEvent,
+  InvitationRevokedEvent,
+  InvitationExpiredEvent,
+} from "./domain/invitation-events.js";
 
 export type { OrganizationRepository } from "./application/organization-repository.js";
 export type { MembershipRepository } from "./application/membership-repository.js";

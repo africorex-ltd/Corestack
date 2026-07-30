@@ -30,6 +30,12 @@ Tenancy owns three aggregates (per
 - **Invitation** — email-addressed, single-use hashed token, expiry, a
   "never-owner" rule.
 
+This list describes the forward-looking blueprint contract; the aggregates
+actually built so far diverge from it in specific, tracked ways (no
+`kind` field on `Organization`, no token on `Invitation`) — see each
+aggregate's own domain doc, linked below, for exactly what's built versus
+still open.
+
 ## Architecture
 
 Standard CoreStack module layout — the same Clean Architecture layering
@@ -38,7 +44,7 @@ and dependency rule as `@corestack/platform` and
 
 ```
 src/
-  domain/          Organization (E05-T02) + Membership (E05-T04) aggregates; Invitation still a placeholder
+  domain/          Organization (E05-T02) + Membership (E05-T04) + Invitation (E05-T05) aggregates
   application/     createOrganization use case (E05-T03), repository ports, event contracts, config spec, module factory
   infrastructure/  reserved — Postgres adapters land in E05-T21..T23
   interface/       reserved — HTTP bindings land in E05-T24..T25
@@ -52,10 +58,23 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05)
 
 What exists today:
 
+- **The `Invitation` aggregate** — a pure domain model: `InvitationId`
+  (own value object) + reused `OrganizationId`/`UserId` + a temporary,
+  locally-scoped `Email` value object; an `InvitationRole` enum
+  (`ADMIN`/`MEMBER` only — no `OWNER`, runtime-validated since the role
+  typically originates from external input) and an `InvitationStatus`
+  enum (`PENDING`/`ACCEPTED`/`REVOKED`/`EXPIRED` — `PENDING` the only
+  mutable state, the other three all terminal); explicit methods
+  (`create`/`accept`/`revoke`/`expire`), domain events collected via
+  `pullDomainEvents()`/`clearDomainEvents()`. No persistence, no I/O, no
+  kernel port dependency, **no token field** (token generation/hashing is
+  explicitly out of scope — a domain concern for a future task). Full
+  detail:
+  [docs/modules/invitation-domain.md](../../docs/modules/invitation-domain.md).
 - **The `Membership` aggregate** — a pure domain model: `MembershipId`
   (own value object) + reused `OrganizationId` + a temporary, locally-scoped
   `UserId` value object; a `MembershipRole` enum (`OWNER`/`ADMIN`/`MEMBER`,
@@ -66,7 +85,6 @@ What exists today:
   collected via `pullDomainEvents()`/`clearDomainEvents()`. No
   persistence, no I/O, no kernel port dependency. Full detail:
   [docs/modules/membership-domain.md](../../docs/modules/membership-domain.md).
-  `Invitation` is still a bare placeholder record type.
 - **The `createOrganization` use case** — coordinates the `Organization`
   aggregate, `OrganizationRepository`, and `UnitOfWork` event publication;
   contains no domain rules of its own. Returns
@@ -88,10 +106,11 @@ What exists today:
 - `createTenancyModule`: registers a purge subscription and a static
   `health()` stub; returns an empty `useCases: {}`.
 - Repository ports (`OrganizationRepository`, `MembershipRepository`,
-  `InvitationRepository`) — interfaces only, no persistence.
-  `MembershipRepository`'s two methods were mechanically updated in
-  E05-T04 to return the real `Membership` aggregate instead of the
-  superseded `MembershipRecord` placeholder.
+  `InvitationRepository`) — interfaces only, no persistence. Each of
+  `MembershipRepository`'s (E05-T04) and `InvitationRepository`'s
+  (E05-T05) two methods was mechanically updated to return the real
+  aggregate instead of its superseded placeholder record type — the same
+  forced fix `OrganizationRepository` went through in E05-T02.
 - Event name constants and payload types
   (`organization.created`/`.updated`/`.deleted`,
   `member.joined`/`.updated`/`.removed`) — types only, no publishing.
@@ -110,25 +129,35 @@ What exists today:
   result.
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and a README explaining the RLS-DDL bridge gap it defers.
-- 13 test files (171 tests) covering the module scaffold (compilation
+- 18 test files (254 tests) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
   (success, duplicate slug, trimming, event publication, repository call
-  counts, `UnitOfWork` usage, timestamp preservation), and the
-  `Membership` aggregate (value objects, role/status transition tables,
-  owner-lock invariants, event emission/ordering, immutability) — all
-  against in-memory test doubles only.
+  counts, `UnitOfWork` usage, timestamp preservation), the `Membership`
+  aggregate (value objects, role/status transition tables, owner-lock
+  invariants, event emission/ordering, immutability), and the
+  `Invitation` aggregate (value objects, email normalization, owner-role
+  rejection, expiry-at-creation validation, status transition tables,
+  event emission/ordering, immutability) — all against in-memory test
+  doubles only.
 
 ## What is intentionally **not** implemented
 
-- **The `Invitation` aggregate.** `src/domain/invitation.ts` is still a
-  bare placeholder record type with zero invariant enforcement,
-  explicitly marked as such in its own file comment.
-- **Ownership transfer.** `Membership` has no method that moves `OWNER`
-  from one membership to another — that requires coordinating two
-  aggregate instances atomically, an application-layer concern. See
-  [membership-domain.md](../../docs/modules/membership-domain.md)'s
+- **Invitation tokens, email delivery, and the acceptance workflow.**
+  `Invitation` (E05-T05) has no `tokenHash` field at all — a deliberate
+  departure from the E05-T01 scaffold's placeholder `InvitationRecord`,
+  which had one. Token generation/hashing and sending the invitation are
+  explicitly out of scope for the domain model. See
+  [invitation-domain.md](../../docs/modules/invitation-domain.md)'s
+  non-goals and "Future invitation-token note".
+- **Ownership transfer.** Neither `Membership` nor `Invitation` has a
+  method that moves `OWNER` from one membership to another, and
+  `InvitationRole` structurally excludes `OWNER` entirely — transfer
+  requires coordinating two aggregate instances atomically, an
+  application-layer concern. See
+  [membership-domain.md](../../docs/modules/membership-domain.md)'s and
+  [invitation-domain.md](../../docs/modules/invitation-domain.md)'s
   non-goals.
 - **`Organization`'s `kind` field and the four-state, two-phase-delete
   status machine** (`pending_deletion`/`purged`) from
@@ -181,10 +210,14 @@ What exists today:
 
 ## Next task
 
-**E05-T05**: not yet specified by the founder directive sequence. Not started.
+**E05-T06**: not yet specified by the founder directive sequence. Not started.
 
 ## See also
 
+- [docs/modules/invitation-domain.md](../../docs/modules/invitation-domain.md) —
+  the `Invitation` aggregate's boundaries, role/status models, invariants,
+  expiry semantics, event list, and the future-token/ownership-transfer
+  non-goals.
 - [docs/modules/membership-domain.md](../../docs/modules/membership-domain.md) —
   the `Membership` aggregate's boundaries, role/status models, invariants,
   event list, and the ownership-transfer non-goal.
