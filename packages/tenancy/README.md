@@ -48,8 +48,9 @@ src/
   application/                createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases; getOrganization + listOrganizationMembers + listPendingInvitations queries (E05-T12); repository ports, event contracts, config spec, module factory
   infrastructure/postgres/schema/  Drizzle table definitions (E05-T09) — schema only
   infrastructure/postgres/rls/     RLS policy DDL generators (E05-T10)
-  infrastructure/postgres/postgres-*-repository.ts  Real Postgres repository adapters (E05-T11)
-  postgres/                   `./postgres` package export barrel (E05-T11) — repositories, mappers, role bootstrap, RLS generators, constraint-violation helpers
+  infrastructure/postgres/postgres-*-repository.ts  Real Postgres repository adapters (E05-T11), plus PostgresNotificationWorkItemRepository (E05-T14)
+  infrastructure/postgres/invitation-notification-consumer.ts  Invitation-notification event subscription (E05-T14) — built and exported, not wired into the module scaffold
+  postgres/                   `./postgres` package export barrel (E05-T11) — repositories, mappers, role bootstrap, RLS generators, constraint-violation helpers, notification work-item repository + consumer (E05-T14)
   interface/http/              Thin HTTP interface (E05-T13) — 6 route handlers, context extraction, error mapping, validation; `./interface` package export barrel
   testing/                    reserved — adopter-facing fakes land in E05-T28
 test-support/                 in-memory repositories + workflow harness + event collector (E05-T08) — internal, project-only; not exported, not adopter-facing
@@ -71,10 +72,42 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11) + query services (E05-T12) + HTTP interface (E05-T13)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11) + query services (E05-T12) + HTTP interface (E05-T13) + notification orchestration (E05-T14)
 
 What exists today:
 
+- **Invitation-notification orchestration** (`src/application/notification-work-item.ts`,
+  `build-notification-work-item.ts`, `src/infrastructure/postgres/postgres-notification-work-item-repository.ts`,
+  `invitation-notification-consumer.ts`, exported from `@corestack/tenancy/postgres`, E05-T14) —
+  turns `INVITATION_CREATED`/`INVITATION_ACCEPTED`/`INVITATION_EXPIRED`
+  domain events into durable `tenancy.notification_work_items` rows
+  (`PENDING` status), replacing nothing but adding the background side of
+  notifications with **no email sent** (Section 13: no SendGrid/SES/
+  Postmark/SMTP, no cron, no worker process). `buildNotificationWorkItemFromEvent`
+  is pure (no I/O); `createInvitationNotificationSubscription` wraps it in
+  one idempotent, transactionally-atomic handler — a single wildcard
+  (`event: "*"`) `EventSubscription` rather than three, to avoid a
+  checkpoint-collision hazard in the outbox relay's per-consumer
+  checkpoint model. The handler elevates to `tenancy_platform` once, as
+  the transaction's first statement, before checking
+  `ProcessedEventStore.hasProcessed` — both that check and the work-item
+  insert need the elevation, and a real integration-test failure
+  (`permission denied for table processed_events`) is what caught the
+  first version's ordering mistake. `PostgresNotificationWorkItemRepository`
+  is `@corestack/tenancy`'s first real `GlobalRepository`
+  ([ADR-0026](../../docs/adr/0026-notification-work-item-repository-is-global.md)) —
+  its only caller is a replayed event, not an authenticated request, so
+  there's no `OrgScopedContext` to thread. New migration
+  (`migrations/tenancy/0003_create-notification-work-items.sql`) and two
+  new `ensureTenancyModuleRoles` grants
+  (`platform.processed_events` access for `tenancy_platform`).
+  `createInvitationNotificationSubscription` is exported but **not**
+  registered into `createTenancyModule`'s `eventHandlers` by this task —
+  same deferred-wiring cut as `tenancyRoutes` in E05-T13. 16 new unit
+  tests (pure mapping, subscription shape, migration/RLS consistency) and
+  7 new real-Postgres integration tests (created/duplicate/accepted/
+  expired/replay/rollback/ignored-event). Full detail:
+  [docs/modules/tenancy-notification-orchestration.md](../../docs/modules/tenancy-notification-orchestration.md).
 - **HTTP interface** (`src/interface/http/`, exported from
   `@corestack/tenancy/interface`, E05-T13) — the module is now
   HTTP-accessible: `POST /organizations`, `POST
@@ -350,8 +383,8 @@ What exists today:
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and the real table + RLS migration
   (`migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10).
-- 37 unit test files (450 tests) plus 1 real-Postgres integration test
-  file (34 tests, `pnpm test:integration`) covering the module scaffold (compilation
+- 40 unit test files (466 tests) plus 1 real-Postgres integration test
+  file (41 tests, `pnpm test:integration`) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -393,8 +426,13 @@ What exists today:
   HTTP-level integration tests (successful create/invite/accept,
   successful reads, a validation failure, duplicate conflicts, an
   authorization failure, and genuine RLS-backed cross-tenant invisibility
-  for all three `GET` routes) — 34 real-Postgres integration tests in
-  total (E05-T11 + E05-T12 + E05-T13).
+  for all three `GET` routes) — plus 16 new notification-orchestration
+  unit tests (E05-T14: 7 pure event→work-item mapping tests, 2
+  subscription-shape/ignored-event tests, 7 migration/RLS consistency
+  tests) and 7 new real-Postgres integration tests (created/duplicate/
+  accepted/expired/replay/rollback/ignored-event) — 41 real-Postgres
+  integration tests in total (E05-T11 + E05-T12 + E05-T13 + E05-T14),
+  40 unit test files (466 tests) overall.
 
 ## What is intentionally **not** implemented
 
@@ -474,14 +512,21 @@ What exists today:
   Tenancy owns actual data. Real deletion ships in a future task — not
   E05-T13 as originally guessed here; E05-T13 turned out to be the HTTP
   interface layer (see below).
-- **Authentication providers, background jobs, anonymous invitation
-  acceptance, cross-organization admin features.** The module is now
-  HTTP-accessible (E05-T13, see above) for six routes, but the interface
-  layer trusts caller-supplied `X-Actor-Id`/`X-Organization-Id` headers
-  in place of a real authentication provider (see
-  tenancy-http-interface.md's "Context extraction" section); nothing
-  wires a background job yet; anonymous acceptance and admin bypasses
-  remain explicitly out of scope (Section 1 of the E05-T13 directive).
+- **Authentication providers, anonymous invitation acceptance,
+  cross-organization admin features.** The module is now HTTP-accessible
+  (E05-T13, see above) for six routes, but the interface layer trusts
+  caller-supplied `X-Actor-Id`/`X-Organization-Id` headers in place of a
+  real authentication provider (see tenancy-http-interface.md's "Context
+  extraction" section); anonymous acceptance and admin bypasses remain
+  explicitly out of scope (Section 1 of the E05-T13 directive).
+- **Real email delivery, external providers, and any scheduler/worker
+  process.** E05-T14 (see above) makes invitation events produce durable
+  `PENDING` work items, but nothing reads them: no SendGrid/SES/Postmark/
+  SMTP client, no cron job, no background worker exists anywhere in this
+  package. `createInvitationNotificationSubscription` is exported but not
+  registered into `createTenancyModule`'s `eventHandlers`. See
+  tenancy-notification-orchestration.md's "Why no email is sent yet" and
+  "Future delivery adapters" sections.
 - **Pagination, filtering, and search on the query services.** Both list
   queries return every matching row in one call; neither accepts a role
   filter, a search term, or a cursor/limit parameter (Section 14 of the
@@ -508,13 +553,23 @@ What exists today:
 
 ## Next task
 
-**E05-T14**: not yet specified by the founder directive sequence. Not
-started. Per Section 15 of the E05-T13 directive, background jobs and
-notification delivery are explicitly **not** to be started
-automatically — it waits for an explicit E05-T14 prompt.
+**E05-T15**: not yet specified by the founder directive sequence. Not
+started. Per Section 14 of the E05-T14 directive, real notification
+delivery, background workers, and any wiring into `createTenancyModule`'s
+`eventHandlers` are explicitly **not** to be started automatically — it
+waits for an explicit E05-T15 prompt.
 
 ## See also
 
+- [docs/modules/tenancy-notification-orchestration.md](../../docs/modules/tenancy-notification-orchestration.md) —
+  invitation-notification orchestration (E05-T14): event flow, the
+  single-wildcard-subscription rationale, idempotency/atomicity/role-
+  elevation strategy (including the permission-denied bug this task's own
+  integration tests caught), retry-state model, why no email is sent yet,
+  and future delivery adapters.
+- [docs/adr/0026-notification-work-item-repository-is-global.md](../../docs/adr/0026-notification-work-item-repository-is-global.md) —
+  why `PostgresNotificationWorkItemRepository` is a `GlobalRepository`
+  (event-consumer, not request-scoped).
 - [docs/modules/tenancy-http-interface.md](../../docs/modules/tenancy-http-interface.md) —
   the HTTP interface (E05-T13): route table, validation rules, error
   mapping, the 404-vs-403 rationale, serialization rules, and the future

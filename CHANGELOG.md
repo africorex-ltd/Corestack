@@ -1387,6 +1387,43 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   27→37 files; integration file 20→34 tests, run twice for stability;
   architecture-fitness unchanged at 36).
 
+- **E05-T14: Tenancy invitation-notification orchestration (2026-07-31).**
+  The durable background-processing side of invitation notifications —
+  `INVITATION_CREATED`/`INVITATION_ACCEPTED`/`INVITATION_EXPIRED` domain
+  events now produce durable `tenancy.notification_work_items` rows
+  (`PENDING` status); `MEMBER_JOINED` is explicitly ignored. **No email
+  is sent**: no SendGrid/SES/Postmark/SMTP client, no cron job, no
+  background worker anywhere in this package. `buildNotificationWorkItemFromEvent`
+  is a pure, total mapping function (zero I/O); `createInvitationNotificationSubscription`
+  wraps it in one idempotent, transactionally-atomic event handler — **a
+  single wildcard (`event: "*"`) `EventSubscription`, not three**, because
+  the outbox relay's checkpoint is keyed by consumer name alone, and three
+  subscriptions sharing one consumer name across three event names would
+  each independently advance the same checkpoint row (a hazard the
+  existing duplicate-registration check does not catch, since it only
+  flags an identical `(consumer, event)` pair). Atomicity comes from a
+  hand-rolled transaction (`hasProcessed` → build → insert →
+  `markProcessed`, all against one `PostgresUnitOfWork`), not the
+  kernel's generic three-step `idempotentHandler` wrapper, satisfying
+  Section 8's "transaction rollback safety" test. `PostgresNotificationWorkItemRepository`
+  is the package's first real `GlobalRepository`
+  ([ADR-0026](docs/adr/0026-notification-work-item-repository-is-global.md))
+  — its only caller is a replayed domain event, not an authenticated
+  request, so there's no `OrgScopedContext` to thread. **A real bug this
+  task's own integration tests caught**: the first design elevated to
+  `tenancy_platform` only around the repository's own `INSERT`, leaving
+  the `ProcessedEventStore` calls running unprivileged against
+  `platform.processed_events` and failing with a permission error;
+  fixed by moving role elevation to the first statement in the
+  transaction, before any check. `createInvitationNotificationSubscription`
+  is exported from `@corestack/tenancy/postgres` but **not** registered
+  into `createTenancyModule`'s `eventHandlers` by this task — the same
+  deferred-wiring cut E05-T13 made for `tenancyRoutes`. Full detail:
+  [tenancy-notification-orchestration.md](docs/modules/tenancy-notification-orchestration.md).
+  Full build/typecheck/lint/test/integration-test/architecture-fitness/
+  export-snapshot gate green repo-wide (tenancy 450→466 unit tests,
+  37→40 files; integration file 34→41 tests, run twice for stability).
+
 <!--
 Template for release-train entries:
 

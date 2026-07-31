@@ -23,7 +23,14 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import postgres, { type Sql } from "postgres";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { createContext, FixedClock, isOk, UuidGenerator, type Context } from "@corestack/kernel";
+import {
+  createContext,
+  createEvent,
+  FixedClock,
+  isOk,
+  UuidGenerator,
+  type Context,
+} from "@corestack/kernel";
 import {
   FsMigrationSource,
   loadMigrationSet,
@@ -61,7 +68,16 @@ import {
   PostgresOrganizationRepository,
   PostgresMembershipRepository,
   PostgresInvitationRepository,
+  createInvitationNotificationSubscription,
 } from "../../src/postgres/index.js";
+import {
+  INVITATION_CREATED_EVENT,
+  INVITATION_ACCEPTED_EVENT,
+  INVITATION_EXPIRED_EVENT,
+  type InvitationCreatedPayload,
+  type InvitationAcceptedPayload,
+  type InvitationExpiredPayload,
+} from "../../src/application/events.js";
 import { TenancyWorkflowHarness } from "../../test-support/workflow-harness.js";
 import { handleCreateOrganization } from "../../src/interface/http/create-organization-route.js";
 import { handleInviteMember } from "../../src/interface/http/invite-member-route.js";
@@ -1045,5 +1061,183 @@ describe("Tenancy HTTP interface (E05-T13)", () => {
 
     expect(response.status).toBe(404);
     expect(Array.isArray(response.body)).toBe(false);
+  });
+});
+
+describe("Invitation-notification consumer (E05-T14)", () => {
+  /** A fresh org, real row in tenancy.organizations — notification_work_items FKs to it. */
+  async function seedOrganization(): Promise<string> {
+    const organization = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), organization));
+    return organization.id.value;
+  }
+
+  function buildEvent<TPayload>(name: string, organizationId: string | null, payload: TPayload) {
+    const context = createContext({ actor: { type: "system", id: null }, organizationId }, ids);
+    return createEvent({ name, version: 1, payload }, context, { clock, ids });
+  }
+
+  async function countWorkItems(organizationId: string): Promise<number> {
+    const rows = await superuserSql`
+      SELECT 1 FROM tenancy.notification_work_items WHERE organization_id = ${organizationId}::uuid
+    `;
+    return rows.length;
+  }
+
+  async function isEventProcessed(eventId: string): Promise<boolean> {
+    const rows = await superuserSql`
+      SELECT 1 FROM platform.processed_events
+      WHERE consumer = 'tenancy:invitation-notifications' AND event_id = ${eventId}::uuid
+    `;
+    return rows.length > 0;
+  }
+
+  it("INVITATION_CREATED produces a PENDING work item with the invitee email as recipient", async () => {
+    const organizationId = await seedOrganization();
+    const invitationId = randomUUID();
+    const subscription = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    const payload: InvitationCreatedPayload = {
+      invitationId,
+      organizationId,
+      email: "invitee@example.com",
+      role: "MEMBER",
+      invitedBy: randomUUID(),
+      expiresAt: "2026-08-07T00:00:00.000Z",
+    };
+    const event = buildEvent(INVITATION_CREATED_EVENT, organizationId, payload);
+
+    await subscription.handler(event);
+
+    const rows = await superuserSql`
+      SELECT type, organization_id, invitation_id, recipient, payload, status, attempts, processed_at, last_error
+      FROM tenancy.notification_work_items
+      WHERE organization_id = ${organizationId}::uuid
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.type).toBe("INVITATION_CREATED");
+    expect(rows[0]?.invitation_id).toBe(invitationId);
+    expect(rows[0]?.recipient).toBe("invitee@example.com");
+    expect(rows[0]?.payload).toEqual(payload);
+    expect(rows[0]?.status).toBe("PENDING");
+    expect(rows[0]?.attempts).toBe(0);
+    expect(rows[0]?.processed_at).toBeNull();
+    expect(rows[0]?.last_error).toBeNull();
+    expect(await isEventProcessed(event.id)).toBe(true);
+  });
+
+  it("a duplicate delivery of the same event produces no duplicate work item", async () => {
+    const organizationId = await seedOrganization();
+    const subscription = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    const payload: InvitationCreatedPayload = {
+      invitationId: randomUUID(),
+      organizationId,
+      email: "invitee@example.com",
+      role: "MEMBER",
+      invitedBy: randomUUID(),
+      expiresAt: "2026-08-07T00:00:00.000Z",
+    };
+    const event = buildEvent(INVITATION_CREATED_EVENT, organizationId, payload);
+
+    await subscription.handler(event);
+    await subscription.handler(event);
+
+    expect(await countWorkItems(organizationId)).toBe(1);
+  });
+
+  it("INVITATION_ACCEPTED produces a work item with a null recipient (Section 5: no I/O to resolve one)", async () => {
+    const organizationId = await seedOrganization();
+    const subscription = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    const payload: InvitationAcceptedPayload = { invitationId: randomUUID(), organizationId };
+    const event = buildEvent(INVITATION_ACCEPTED_EVENT, organizationId, payload);
+
+    await subscription.handler(event);
+
+    const rows = await superuserSql`
+      SELECT type, recipient FROM tenancy.notification_work_items WHERE organization_id = ${organizationId}::uuid
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.type).toBe("INVITATION_ACCEPTED");
+    expect(rows[0]?.recipient).toBeNull();
+  });
+
+  it("INVITATION_EXPIRED produces a work item with a null recipient", async () => {
+    const organizationId = await seedOrganization();
+    const subscription = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    const payload: InvitationExpiredPayload = { invitationId: randomUUID(), organizationId };
+    const event = buildEvent(INVITATION_EXPIRED_EVENT, organizationId, payload);
+
+    await subscription.handler(event);
+
+    const rows = await superuserSql`
+      SELECT type, recipient FROM tenancy.notification_work_items WHERE organization_id = ${organizationId}::uuid
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.type).toBe("INVITATION_EXPIRED");
+    expect(rows[0]?.recipient).toBeNull();
+  });
+
+  it("replay safety: a brand-new subscription instance (simulating a process restart) still no-ops on an already-processed event", async () => {
+    const organizationId = await seedOrganization();
+    const payload: InvitationCreatedPayload = {
+      invitationId: randomUUID(),
+      organizationId,
+      email: "invitee@example.com",
+      role: "ADMIN",
+      invitedBy: randomUUID(),
+      expiresAt: "2026-08-07T00:00:00.000Z",
+    };
+    const event = buildEvent(INVITATION_CREATED_EVENT, organizationId, payload);
+
+    const first = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    await first.handler(event);
+    expect(await countWorkItems(organizationId)).toBe(1);
+
+    // A fresh subscription — no shared in-memory state with `first` at
+    // all, only the same Postgres connection — proves durability rests
+    // entirely on platform.processed_events, not on anything the handler
+    // remembers between calls.
+    const replay = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    await expect(replay.handler(event)).resolves.toBeUndefined();
+    expect(await countWorkItems(organizationId)).toBe(1);
+  });
+
+  it("transaction rollback safety: a failed insert leaves neither a work item nor a processed-event mark behind", async () => {
+    const organizationId = await seedOrganization();
+    const subscription = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    // A malformed invitationId breaks the INSERT's own `::uuid` cast —
+    // forcing a real Postgres error partway through the handler's
+    // transaction, without needing to fake or mock anything.
+    const payload: InvitationCreatedPayload = {
+      invitationId: "not-a-uuid",
+      organizationId,
+      email: "invitee@example.com",
+      role: "MEMBER",
+      invitedBy: randomUUID(),
+      expiresAt: "2026-08-07T00:00:00.000Z",
+    };
+    const event = buildEvent(INVITATION_CREATED_EVENT, organizationId, payload);
+
+    // Asserting on the specific failure mode (not just "throws") matters
+    // here: a permission error elsewhere in the transaction would also
+    // make this test pass for the wrong reason without this check.
+    await expect(subscription.handler(event)).rejects.toThrow(/invalid input syntax/i);
+
+    expect(await countWorkItems(organizationId)).toBe(0);
+    expect(await isEventProcessed(event.id)).toBe(false);
+  });
+
+  it("ignores MEMBER_JOINED and any other unrecognized event name (Section 3)", async () => {
+    const organizationId = await seedOrganization();
+    const subscription = createInvitationNotificationSubscription({ sql: appRoleSql, ids, clock });
+    const event = buildEvent("tenancy.member.joined", organizationId, {
+      organizationId,
+      membershipId: randomUUID(),
+      userId: randomUUID(),
+      role: "MEMBER",
+    });
+
+    await subscription.handler(event);
+
+    expect(await countWorkItems(organizationId)).toBe(0);
   });
 });

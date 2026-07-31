@@ -45,6 +45,20 @@ import { TENANCY_APP_ROLE, TENANCY_PLATFORM_ROLE } from "./rls/roles.js";
  * session can `SET LOCAL ROLE` into anything regardless, per E03-T30's
  * own finding — this grant matters for the production shape, not the
  * test harness).
+ *
+ * **`platform.processed_events` access for `tenancy_platform`** (E05-T14)
+ * — the invitation-notification consumer
+ * (`invitation-notification-consumer.ts`) runs its own transaction
+ * elevated to `tenancy_platform` (the same elevation `existsBySlug`/
+ * `findBySlug` use) and needs to read/write the kernel's shared
+ * idempotency-tracking table from that same elevated session to get
+ * "duplicate event -> no duplicate work item" atomically with the
+ * work-item insert. `platform.processed_events` carries no RLS of its
+ * own (unlike every `tenancy.*` table) — this is a plain `GRANT`, no new
+ * policy needed. `tenancy_app` is deliberately not granted this directly:
+ * only the elevated `tenancy_platform` session ever touches this table
+ * from this module, the same asymmetry `GRANT INSERT ON platform.outbox`
+ * above has with `tenancy_app` for the opposite (producer-side) case.
  */
 export async function ensureTenancyModuleRoles(sql: Sql): Promise<void> {
   await ensureTenancyRoles(sql, {
@@ -55,5 +69,9 @@ export async function ensureTenancyModuleRoles(sql: Sql): Promise<void> {
   await sql.unsafe(`GRANT INSERT ON platform.outbox TO ${TENANCY_APP_ROLE}`);
   await sql.unsafe(
     `GRANT ${TENANCY_PLATFORM_ROLE} TO ${TENANCY_APP_ROLE} WITH INHERIT FALSE`,
+  );
+  await sql.unsafe(`GRANT USAGE ON SCHEMA platform TO ${TENANCY_PLATFORM_ROLE}`);
+  await sql.unsafe(
+    `GRANT SELECT, INSERT ON platform.processed_events TO ${TENANCY_PLATFORM_ROLE}`,
   );
 }

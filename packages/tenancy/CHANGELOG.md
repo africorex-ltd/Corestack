@@ -655,3 +655,84 @@
   `parseEmail` instead) — removed before commit rather than shipped as
   unused public surface. Full detail:
   [docs/modules/tenancy-http-interface.md](../../docs/modules/tenancy-http-interface.md).
+
+### Invitation-notification orchestration (E05-T14)
+
+- The durable background-processing side of invitation notifications —
+  `INVITATION_CREATED`/`INVITATION_ACCEPTED`/`INVITATION_EXPIRED` domain
+  events now produce `tenancy.notification_work_items` rows (`PENDING`
+  status). `MEMBER_JOINED` is explicitly ignored. **No email is sent**:
+  no SendGrid/SES/Postmark/SMTP client, no cron job, no background worker
+  anywhere in this package (Section 13).
+- `NotificationWorkItem` (Section 4 field list exactly) and
+  `buildNotificationWorkItemFromEvent` (`src/application/`) — a pure,
+  total mapping function, zero I/O, returning `null` for `MEMBER_JOINED`,
+  any unrecognized event name, or any event with `organizationId: null`.
+  `recipient` is nullable, not `?? ""`-coerced — `INVITATION_ACCEPTED`/
+  `INVITATION_EXPIRED` payloads carry no email field at all, and Section
+  5 forbids the repository read that resolving one would require.
+- `NotificationWorkItemRepository` (port, `create` only — no
+  `findById`/list method, since Section 8's integration tests verify a
+  created row directly against the table) and
+  `PostgresNotificationWorkItemRepository` (adapter,
+  `src/infrastructure/postgres/`, exported from `@corestack/tenancy/postgres`).
+  This is `@corestack/tenancy`'s first real `GlobalRepository`
+  ([ADR-0026](../../docs/adr/0026-notification-work-item-repository-is-global.md)):
+  its only caller is a replayed domain event, not an authenticated
+  request, so there's no `OrgScopedContext`/`app.current_org` to thread —
+  visibility comes from the `tenancy_platform` role's RLS bypass instead.
+- `createInvitationNotificationSubscription`
+  (`invitation-notification-consumer.ts`) — **a single wildcard
+  (`event: "*"`) `EventSubscription`, not three.** `EventSubscription.consumer`
+  doubles as the outbox relay's per-consumer checkpoint key; three
+  subscriptions sharing one consumer name across three event names would
+  each independently advance the *same* checkpoint row, a hazard
+  `create-core-stack.ts`'s duplicate-registration check does not catch
+  (it only flags an identical `(consumer, event)` pair). One subscription,
+  filtering internally against a `HANDLED_EVENT_NAMES` set, has exactly
+  one checkpoint.
+- **Atomicity via a hand-rolled transaction, not the kernel's generic
+  `idempotentHandler`.** The handler opens its own `PostgresUnitOfWork`
+  transaction and sequences `hasProcessed` → build (pure) → insert →
+  `markProcessed` by hand — the atomicity Section 8's "transaction
+  rollback safety" test requires, which the kernel's three-separate-step
+  wrapper can't provide.
+- **A real bug this task's own tests caught**: the first version elevated
+  to `tenancy_platform` only around the repository's own `INSERT`
+  (mirroring `existsBySlug`/`findBySlug` too literally), leaving
+  `hasProcessed`/`markProcessed` running as the unprivileged `tenancy_app`
+  role against `platform.processed_events`. The real-Postgres integration
+  suite failed immediately with `permission denied for table
+  processed_events`. Fixed by moving `SET LOCAL ROLE tenancy_platform` to
+  the first statement in the transaction, before the `hasProcessed`
+  check, and removing all elevation logic from the repository's own
+  `create` method. The rollback-safety test now asserts a specific
+  expected Postgres error (`/invalid input syntax/i`), not a bare
+  `.toThrow()` — a bare assertion would have passed even during the buggy
+  version, since a permission-denied error is still a thrown error.
+- New migration `migrations/tenancy/0003_create-notification-work-items.sql`
+  (all Section 4 fields, both CHECK constraints, standard org-scoped RLS
+  for `tenancy_app` kept for forward-compatibility though unused by any
+  current caller, `tenancy_platform` gets `SELECT`+`INSERT` unlike every
+  other tenancy table's `SELECT`-only grant). `attempts` has no column
+  `DEFAULT` — the only writer always supplies it explicitly, so a default
+  would never fire. Two new `ensureTenancyModuleRoles` grants
+  (`tenancy_platform` gains `USAGE` on the `platform` schema and
+  `SELECT, INSERT` on `platform.processed_events`).
+- `createInvitationNotificationSubscription` is exported from
+  `@corestack/tenancy/postgres` but **not** registered into
+  `createTenancyModule`'s `eventHandlers` by this task — the same
+  deferred-wiring cut E05-T13 made for `tenancyRoutes`.
+  `module.test.ts`'s existing `eventHandlers` `toHaveLength(1)` assertion
+  (the pre-existing purge subscription) is the concrete proof this is
+  deliberate.
+- 16 new unit tests (tenancy package: 450→466 unit tests, 37→40 files):
+  7 pure event→work-item mapping tests, 2 subscription-shape/ignored-event
+  tests, 7 migration/RLS-consistency tests (the shipped migration matches
+  `buildOrgScopedTableRlsDdl`'s real generator output byte-for-byte). 7
+  new real-Postgres integration tests (tenancy package: 34→41 integration
+  tests): created→`PENDING` work item with recipient, duplicate delivery
+  → no duplicate row, accepted/expired → null-recipient work items,
+  replay safety, transaction rollback safety, `MEMBER_JOINED` ignored
+  end-to-end. Full detail:
+  [docs/modules/tenancy-notification-orchestration.md](../../docs/modules/tenancy-notification-orchestration.md).

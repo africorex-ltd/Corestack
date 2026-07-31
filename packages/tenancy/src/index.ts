@@ -163,3 +163,12 @@ export {
   toPendingInvitationSummary,
   listPendingInvitations,
 } from "./application/list-pending-invitations-query.js";
+
+export type {
+  NotificationWorkItem,
+  NotificationWorkItemType,
+  NotificationWorkItemStatus,
+} from "./application/notification-work-item.js";
+export type { NotificationWorkItemRepository } from "./application/notification-work-item-repository.js";
+export type { BuildNotificationWorkItemDeps } from "./application/build-notification-work-item.js";
+export { buildNotificationWorkItemFromEvent } from "./application/build-notification-work-item.js";

@@ -2,7 +2,44 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T13 (Tenancy HTTP
+> estimated. Last update: **2026-07-31** — **E05-T14 (Tenancy
+> invitation-notification orchestration) complete**: the durable
+> background-processing side of invitation notifications —
+> `INVITATION_CREATED`/`INVITATION_ACCEPTED`/`INVITATION_EXPIRED` domain
+> events now produce durable `tenancy.notification_work_items` rows
+> (`PENDING` status); `MEMBER_JOINED` explicitly ignored. **No email is
+> sent** — no SendGrid/SES/Postmark/SMTP client, no cron job, no
+> background worker anywhere in this package.
+> `buildNotificationWorkItemFromEvent` is a pure, total mapping function
+> (zero I/O); `createInvitationNotificationSubscription` wraps it in one
+> idempotent, transactionally-atomic handler — **a single wildcard
+> (`event: "*"`) `EventSubscription`, not three**, since the outbox
+> relay's checkpoint is keyed by consumer name alone and three
+> subscriptions sharing one consumer name across three event names would
+> each independently advance the same checkpoint row (a hazard the
+> existing duplicate-registration check does not catch). Atomicity comes
+> from a hand-rolled transaction (`hasProcessed` → build → insert →
+> `markProcessed`, all against one `PostgresUnitOfWork`), not the
+> kernel's generic three-step `idempotentHandler` wrapper, satisfying
+> Section 8's "transaction rollback safety" test.
+> `PostgresNotificationWorkItemRepository` is the package's first real
+> `GlobalRepository`
+> ([ADR-0026](../adr/0026-notification-work-item-repository-is-global.md))
+> — its only caller is a replayed domain event, not an authenticated
+> request. **A real bug this task's own integration tests caught**: the
+> first design elevated to `tenancy_platform` only around the
+> repository's own `INSERT`, leaving the `ProcessedEventStore` calls
+> running unprivileged and failing with a permission error; fixed by
+> moving role elevation to the first statement in the transaction, before
+> any check. `createInvitationNotificationSubscription` is exported from
+> `@corestack/tenancy/postgres` but **not** registered into
+> `createTenancyModule`'s `eventHandlers` by this task — the same
+> deferred-wiring cut E05-T13 made for `tenancyRoutes`. Full detail:
+> [tenancy-notification-orchestration.md](../modules/tenancy-notification-orchestration.md).
+> Full build/typecheck/lint/test/integration-test/architecture-fitness/
+> export-snapshot gate green repo-wide (tenancy unit tests 450→466,
+> 37→40 files; integration file 34→41 tests, run twice for stability).
+> Prior update: **2026-07-30** — **E05-T13 (Tenancy HTTP
 > interface) complete**: a thin HTTP adaptation layer over the existing use
 > cases and query services — six routes (`POST /organizations`, `POST
 > /organizations/:id/invitations`, `POST /invitations/:id/accept`, `GET
@@ -488,7 +525,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 79 files / **815 tests**, re-measured 2026-07-31 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 37/450** (up from 27/391, +10 files/+59 tests — E05-T13: `validation.ts`/`context.ts`/`errors.ts` helper tests plus one test file per HTTP route handler against in-memory test doubles, and the export-surface snapshot's new `./interface` block; an initial `requireNonEmptyString` helper and its 3 tests were dropped before commit as unused public surface). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/34 tests** (up from 20, E05-T13 — 14 new HTTP-level tests: successful create/invite/accept, successful reads, a validation failure, duplicate conflicts, an authorization failure, and genuine RLS-backed cross-tenant invisibility for all three `GET` routes; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T13 added no new package/manifest surface) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 82 files / **831 tests**, re-measured 2026-07-31 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 40/466** (up from 37/450, +3 files/+16 tests — E05-T14: 7 pure event→work-item mapping tests, 2 subscription-shape/ignored-event tests, 7 migration/RLS-consistency tests). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/41 tests** (up from 34, E05-T14 — 7 new invitation-notification-consumer tests: created→`PENDING` work item, duplicate delivery→no duplicate row, accepted/expired→null-recipient work items, replay safety, transaction rollback safety, `MEMBER_JOINED` ignored end-to-end; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T14 added no new fitness test, only a `GlobalRepository` marker + ADR-0026 satisfying an existing rule) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

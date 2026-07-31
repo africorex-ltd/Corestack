@@ -31,6 +31,7 @@ supersedes the old one.
 | [0023](0023-tenancy-schema-text-enum-with-check-constraint.md)   | Tenancy schema enums are CHECK-constrained `text`, not native Postgres `ENUM` | Accepted |
 | [0024](0024-tenancy-organizations-rls-direct-visibility.md)      | `tenancy.organizations`' RLS uses direct (id-keyed) visibility, not membership-driven | Accepted |
 | [0025](0025-organization-save-sets-own-org-context.md)           | `PostgresOrganizationRepository.save` sets its own `app.current_org`, not `PostgresUnitOfWork`'s constructor | Accepted |
+| [0026](0026-notification-work-item-repository-is-global.md)      | `PostgresNotificationWorkItemRepository` is a `GlobalRepository` (event-consumer, not request-scoped) | Accepted |
 
 ## Writing an ADR
 

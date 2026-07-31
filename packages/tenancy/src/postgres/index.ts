@@ -40,3 +40,16 @@ export {
   isUniqueViolation,
   uniqueViolationConstraintName,
 } from "../infrastructure/postgres/constraint-violation.js";
+
+export {
+  toNotificationWorkItem,
+  toNotificationWorkItemRow,
+  type NotificationWorkItemRow,
+  type NotificationWorkItemRowValues,
+} from "../infrastructure/postgres/mappers/notification-work-item-mapper.js";
+export { PostgresNotificationWorkItemRepository } from "../infrastructure/postgres/postgres-notification-work-item-repository.js";
+export {
+  createInvitationNotificationSubscription,
+  INVITATION_NOTIFICATION_CONSUMER,
+  type InvitationNotificationConsumerDeps,
+} from "../infrastructure/postgres/invitation-notification-consumer.js";
