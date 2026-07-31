@@ -172,3 +172,18 @@ export type {
 export type { NotificationWorkItemRepository } from "./application/notification-work-item-repository.js";
 export type { BuildNotificationWorkItemDeps } from "./application/build-notification-work-item.js";
 export { buildNotificationWorkItemFromEvent } from "./application/build-notification-work-item.js";
+
+export type {
+  InvitationCreatedDeliveryPayload,
+  InvitationAcceptedDeliveryPayload,
+  InvitationExpiredDeliveryPayload,
+  NotificationDeliveryPort,
+} from "./application/notification-delivery-port.js";
+export { NotificationDeliveryPermanentError } from "./application/notification-delivery-port.js";
+
+export type { NotificationFailureOutcome } from "./application/notification-processing-decisions.js";
+export {
+  MAX_NOTIFICATION_DELIVERY_ATTEMPTS,
+  decideNotificationFailureOutcome,
+  assertNotificationWorkItemDeliverable,
+} from "./application/notification-processing-decisions.js";

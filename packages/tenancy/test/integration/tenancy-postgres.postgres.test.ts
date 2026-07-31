@@ -65,11 +65,17 @@ import { listPendingInvitations } from "../../src/application/list-pending-invit
 import {
   ensureTenancyModuleRoles,
   TENANCY_APP_ROLE,
+  TENANCY_PLATFORM_ROLE,
   PostgresOrganizationRepository,
   PostgresMembershipRepository,
   PostgresInvitationRepository,
+  PostgresNotificationWorkItemRepository,
   createInvitationNotificationSubscription,
+  processNextNotificationWorkItem,
 } from "../../src/postgres/index.js";
+import { MAX_NOTIFICATION_DELIVERY_ATTEMPTS } from "../../src/application/notification-processing-decisions.js";
+import type { NotificationWorkItem } from "../../src/application/notification-work-item.js";
+import { RecordingNotificationDeliveryAdapter } from "../../test-support/recording-notification-delivery-adapter.js";
 import {
   INVITATION_CREATED_EVENT,
   INVITATION_ACCEPTED_EVENT,
@@ -1239,5 +1245,258 @@ describe("Invitation-notification consumer (E05-T14)", () => {
     await subscription.handler(event);
 
     expect(await countWorkItems(organizationId)).toBe(0);
+  });
+});
+
+describe("Notification processing service (E05-T15)", () => {
+  /** A fresh org, real row in tenancy.organizations — notification_work_items FKs to it. */
+  async function seedOrganization(): Promise<string> {
+    const organization = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), organization));
+    return organization.id.value;
+  }
+
+  /**
+   * Inserts a work item directly, bypassing both the repository's `create`
+   * and the event-driven builder — this describe block tests the
+   * processing side in isolation, so it needs full control over seeded
+   * `status`/`attempts`/`recipient` combinations, including one
+   * (`INVITATION_CREATED` + `recipient: null`) the normal write path never
+   * produces but the schema doesn't forbid either.
+   */
+  async function insertWorkItem(overrides: {
+    readonly organizationId: string;
+    readonly type?: "INVITATION_CREATED" | "INVITATION_ACCEPTED" | "INVITATION_EXPIRED";
+    readonly recipient?: string | null;
+    readonly status?: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED";
+    readonly attempts?: number;
+    readonly createdAt?: Date;
+  }): Promise<string> {
+    const id = randomUUID();
+    await superuserSql`
+      INSERT INTO tenancy.notification_work_items
+        (id, type, organization_id, invitation_id, recipient, payload, status, attempts, created_at, processed_at, last_error)
+      VALUES (
+        ${id}::uuid,
+        ${overrides.type ?? "INVITATION_CREATED"},
+        ${overrides.organizationId}::uuid,
+        ${randomUUID()}::uuid,
+        ${overrides.recipient === undefined ? "invitee@example.com" : overrides.recipient},
+        ${superuserSql.json({})},
+        ${overrides.status ?? "PENDING"},
+        ${overrides.attempts ?? 0},
+        ${overrides.createdAt ?? REFERENCE_DATE},
+        NULL,
+        NULL
+      )
+    `;
+    return id;
+  }
+
+  /** Opens one elevated transaction and calls `claimNextPending` directly — used only to hold a claim's row lock open past its own statement, so a concurrent second claim can be proven to run while that lock is still live (see the two SKIP LOCKED tests below). */
+  const notificationWorkItemRepository = new PostgresNotificationWorkItemRepository();
+  async function claimNextPendingHeldOpen(releaseGate: Promise<void>): Promise<NotificationWorkItem | null> {
+    return new PostgresUnitOfWork(appRoleSql, null).run(async (tx) => {
+      await tx.sql.unsafe(`SET LOCAL ROLE ${TENANCY_PLATFORM_ROLE}`);
+      const claimed = await notificationWorkItemRepository.claimNextPending(tx);
+      await releaseGate;
+      return claimed;
+    });
+  }
+  async function claimNextPendingOnce(): Promise<NotificationWorkItem | null> {
+    return new PostgresUnitOfWork(appRoleSql, null).run(async (tx) => {
+      await tx.sql.unsafe(`SET LOCAL ROLE ${TENANCY_PLATFORM_ROLE}`);
+      return notificationWorkItemRepository.claimNextPending(tx);
+    });
+  }
+
+  async function loadWorkItem(id: string): Promise<{
+    status: string;
+    attempts: number;
+    processed_at: Date | null;
+    last_error: string | null;
+  }> {
+    const rows = await superuserSql<
+      { status: string; attempts: number; processed_at: Date | null; last_error: string | null }[]
+    >`
+      SELECT status, attempts, processed_at, last_error
+      FROM tenancy.notification_work_items WHERE id = ${id}::uuid
+    `;
+    const row = rows[0];
+    if (row === undefined) {
+      throw new Error(`work item ${id} not found`);
+    }
+    return row;
+  }
+
+  it("successfully processes a PENDING item: PROCESSED, processedAt set, delivery invoked exactly once", async () => {
+    const organizationId = await seedOrganization();
+    const id = await insertWorkItem({ organizationId, recipient: "invitee@example.com" });
+    const delivery = new RecordingNotificationDeliveryAdapter();
+
+    const result = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+
+    expect(result).toEqual({ outcome: "processed", workItemId: id });
+    expect(delivery.deliveries).toHaveLength(1);
+    expect(delivery.deliveries[0]).toEqual({
+      method: "deliverInvitationCreated",
+      payload: expect.objectContaining({ organizationId, recipient: "invitee@example.com" }),
+    });
+
+    const row = await loadWorkItem(id);
+    expect(row.status).toBe("PROCESSED");
+    expect(row.attempts).toBe(0);
+    expect(row.processed_at).not.toBeNull();
+    expect(row.last_error).toBeNull();
+  });
+
+  it("returns no_pending_work when nothing is PENDING", async () => {
+    const delivery = new RecordingNotificationDeliveryAdapter();
+    const result = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+    expect(result).toEqual({ outcome: "no_pending_work" });
+    expect(delivery.deliveries).toHaveLength(0);
+  });
+
+  it("replay of a processed item is prevented: a second call finds nothing left to claim", async () => {
+    const organizationId = await seedOrganization();
+    const id = await insertWorkItem({ organizationId });
+    const delivery = new RecordingNotificationDeliveryAdapter();
+
+    const first = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+    expect(first).toEqual({ outcome: "processed", workItemId: id });
+
+    const second = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+    expect(second).toEqual({ outcome: "no_pending_work" });
+    expect(delivery.deliveries).toHaveLength(1);
+  });
+
+  it("exactly-once claim: a second claim genuinely overlapping the first's still-open transaction gets null, never the same row", async () => {
+    const organizationId = await seedOrganization();
+    const id = await insertWorkItem({ organizationId });
+
+    // `claimNextPendingHeldOpen` claims the row and then blocks on `gate`
+    // *before* committing — its transaction, and the row lock the claim's
+    // UPDATE took, stay open for as long as we don't resolve `gate`. This
+    // is what forces genuine overlap: the second claim below is only
+    // awaited (and thus only able to complete) if SKIP LOCKED lets it
+    // return without waiting on that still-held lock. If SKIP LOCKED were
+    // removed from the query, the second claim would block on the first
+    // transaction's row lock and this test would hang until timeout,
+    // rather than silently passing for the wrong reason.
+    let releaseA: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const claimAPromise = claimNextPendingHeldOpen(gate);
+
+    // Give A's transaction a moment to actually reach the database and
+    // acquire the row lock before B's claim races it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const claimedByB = await claimNextPendingOnce();
+    expect(claimedByB).toBeNull();
+
+    releaseA();
+    const claimedByA = await claimAPromise;
+    expect(claimedByA?.id).toBe(id);
+
+    const row = await loadWorkItem(id);
+    expect(row.status).toBe("PROCESSING");
+  });
+
+  it("concurrent claim safety: a second claim skips a row still locked by the first and takes the other available row without waiting", async () => {
+    const organizationId = await seedOrganization();
+    const idOldest = await insertWorkItem({ organizationId, createdAt: REFERENCE_DATE });
+    const idNewest = await insertWorkItem({
+      organizationId,
+      createdAt: new Date(REFERENCE_DATE.getTime() + 1000),
+    });
+
+    let releaseA: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    // A claims the oldest row (claimNextPending orders by created_at ASC)
+    // and holds its transaction open past that claim.
+    const claimAPromise = claimNextPendingHeldOpen(gate);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // B is only reached here, before `releaseA()` is ever called — if
+    // SKIP LOCKED did not skip idOldest's held lock and instead blocked
+    // on it (as a plain FOR UPDATE would), this call would never resolve
+    // and the test would time out rather than pass for the wrong reason.
+    const claimedByB = await claimNextPendingOnce();
+    expect(claimedByB?.id).toBe(idNewest);
+
+    releaseA();
+    const claimedByA = await claimAPromise;
+    expect(claimedByA?.id).toBe(idOldest);
+
+    expect((await loadWorkItem(idOldest)).status).toBe("PROCESSING");
+    expect((await loadWorkItem(idNewest)).status).toBe("PROCESSING");
+  });
+
+  it("a transient delivery failure increments attempts, records lastError, and returns the item to PENDING", async () => {
+    const organizationId = await seedOrganization();
+    const id = await insertWorkItem({ organizationId });
+    const delivery = new RecordingNotificationDeliveryAdapter();
+    delivery.failNextWith(new Error("simulated provider timeout"));
+
+    const result = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+
+    expect(result).toEqual({
+      outcome: "failed",
+      workItemId: id,
+      status: "PENDING",
+      lastError: "simulated provider timeout",
+    });
+    const row = await loadWorkItem(id);
+    expect(row.status).toBe("PENDING");
+    expect(row.attempts).toBe(1);
+    expect(row.processed_at).toBeNull();
+    expect(row.last_error).toBe("simulated provider timeout");
+  });
+
+  it("repeated transient failures exhaust the retry budget and resolve to terminal FAILED", async () => {
+    const organizationId = await seedOrganization();
+    const id = await insertWorkItem({ organizationId, attempts: MAX_NOTIFICATION_DELIVERY_ATTEMPTS - 1 });
+    const delivery = new RecordingNotificationDeliveryAdapter();
+    delivery.failNextWith(new Error("still failing"));
+
+    const result = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+
+    expect(result).toEqual({
+      outcome: "failed",
+      workItemId: id,
+      status: "FAILED",
+      lastError: "still failing",
+    });
+    const row = await loadWorkItem(id);
+    expect(row.status).toBe("FAILED");
+    expect(row.attempts).toBe(MAX_NOTIFICATION_DELIVERY_ATTEMPTS);
+
+    // A FAILED row is never claimed again — the row is kept, not lost.
+    const again = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+    expect(again).toEqual({ outcome: "no_pending_work" });
+  });
+
+  it("a permanently malformed item (INVITATION_CREATED with no recipient) fails immediately, bypassing the retry budget", async () => {
+    const organizationId = await seedOrganization();
+    const id = await insertWorkItem({ organizationId, type: "INVITATION_CREATED", recipient: null });
+    const delivery = new RecordingNotificationDeliveryAdapter();
+
+    const result = await processNextNotificationWorkItem({ sql: appRoleSql, clock, delivery });
+
+    expect(result.outcome).toBe("failed");
+    expect(result).toMatchObject({ status: "FAILED" });
+    if (result.outcome === "failed") {
+      expect(result.lastError).toMatch(/has no recipient/);
+    }
+    expect(delivery.deliveries).toHaveLength(0);
+
+    const row = await loadWorkItem(id);
+    expect(row.status).toBe("FAILED");
+    expect(row.attempts).toBe(1);
   });
 });

@@ -1424,6 +1424,49 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   export-snapshot gate green repo-wide (tenancy 450→466 unit tests,
   37→40 files; integration file 34→41 tests, run twice for stability).
 
+- **E05-T15: Tenancy notification processing service (2026-07-31).**
+  Proves the claim/dispatch/record lifecycle for E05-T14's durable
+  notification work items — still with **no real delivery**: no
+  SendGrid/SES/Postmark/SMTP client, no cron job, no worker process, no
+  loop or scheduler anywhere in this package. An internal
+  `NotificationDeliveryPort` (`deliverInvitationCreated`/`Accepted`/
+  `Expired`, each taking only fields already typed on
+  `NotificationWorkItem` — never the generic JSONB payload, never a
+  provider-specific shape) is implemented only by
+  `RecordingNotificationDeliveryAdapter` (test-only). One exported
+  function, `processNextNotificationWorkItem` — no loop, claims at most
+  one `PENDING` row per call via `UPDATE ... WHERE id = (SELECT ... FOR
+  UPDATE SKIP LOCKED LIMIT 1)` (the standard Postgres job-queue claim
+  pattern), dispatches with **no database transaction open** during
+  delivery, then records the outcome in a second transaction — splitting
+  claim and record into separate transactions specifically so a slow or
+  hung delivery call never holds a database connection or row lock.
+  Transient delivery errors increment `attempts` and retry up to
+  `MAX_NOTIFICATION_DELIVERY_ATTEMPTS` before resolving to terminal
+  `FAILED`; an unrecognized `type` or an `INVITATION_CREATED` item with
+  no recipient throws `NotificationDeliveryPermanentError` and fails
+  immediately, bypassing the retry budget, since retrying could never
+  fix either condition. **A gap this task's own integration suite
+  caught**: E05-T14's migration granted `tenancy_platform` only
+  `SELECT`/`INSERT`, sized for that task's `INSERT`-only writer; running
+  this task's suite failed every test with `permission denied for table
+  notification_work_items` from the new `claimNextPending`'s `UPDATE` —
+  fixed with an additive migration
+  (`0004_grant-tenancy-platform-update-notification-work-items.sql`),
+  never an edit to the already-shipped 0003. **A known, accepted gap
+  documented rather than fixed**: a worker that crashes between claiming
+  a row and marking its outcome leaves that row `PROCESSING` forever —
+  closing it needs the reaper/timer this task's own directive explicitly
+  forbids building, so it's written down for whichever future task adds
+  real background processing. The two `SKIP LOCKED` concurrency tests
+  were deliberately built to hang rather than silently pass if `SKIP
+  LOCKED` were ever removed — verified directly by removing it, watching
+  both tests time out, then restoring it. Full detail:
+  [tenancy-notification-processing.md](docs/modules/tenancy-notification-processing.md).
+  Full build/typecheck/lint/test/integration-test/architecture-fitness/
+  export-snapshot gate green repo-wide (tenancy 466→479 unit tests,
+  40→42 files; integration file 41→49 tests, run twice for stability).
+
 <!--
 Template for release-train entries:
 

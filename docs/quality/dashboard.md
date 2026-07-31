@@ -2,7 +2,42 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-31** — **E05-T14 (Tenancy
+> estimated. Last update: **2026-07-31** — **E05-T15 (Tenancy
+> notification processing service) complete**: proves the claim/dispatch/
+> record lifecycle for E05-T14's durable notification work items — still
+> **no real delivery** (no SendGrid/SES/Postmark/SMTP client, no cron
+> job, no worker process, no loop or scheduler). An internal
+> `NotificationDeliveryPort` is implemented only by a test-only recording
+> adapter. One exported function, `processNextNotificationWorkItem` —
+> claims at most one `PENDING` row per call via `UPDATE ... WHERE id =
+> (SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1)`, dispatches with **no
+> database transaction open** during delivery, then records the outcome
+> in a second transaction — deliberately two transactions, not one, so a
+> slow or hung delivery call never holds a database connection or row
+> lock. Transient errors retry up to `MAX_NOTIFICATION_DELIVERY_ATTEMPTS`
+> before resolving to terminal `FAILED`; an unrecognized `type` or an
+> `INVITATION_CREATED` item with no recipient fails immediately via
+> `NotificationDeliveryPermanentError`, bypassing the retry budget
+> entirely. **A gap this task's own integration suite caught**: E05-T14's
+> migration granted `tenancy_platform` only `SELECT`/`INSERT`; running
+> this task's suite failed every test with `permission denied for table
+> notification_work_items` from the new `claimNextPending`'s `UPDATE` —
+> fixed with an additive migration
+> (`0004_grant-tenancy-platform-update-notification-work-items.sql`),
+> never an edit to the already-shipped 0003. **A known, accepted gap,
+> documented rather than fixed**: a worker that crashes between claiming
+> a row and marking its outcome leaves that row `PROCESSING` forever —
+> closing it needs the reaper/timer this task's own directive explicitly
+> forbids, so it's written into the design doc's "worker model" section
+> for a future task. The two `SKIP LOCKED` concurrency tests were
+> deliberately built to hang rather than silently pass if `SKIP LOCKED`
+> were ever removed — verified directly by removing it, watching both
+> tests time out, then restoring it. Full detail:
+> [tenancy-notification-processing.md](../modules/tenancy-notification-processing.md).
+> Full build/typecheck/lint/test/integration-test/architecture-fitness/
+> export-snapshot gate green repo-wide (tenancy unit tests 466→479,
+> 40→42 files; integration file 41→49 tests, run twice for stability).
+> Prior update: **2026-07-31** — **E05-T14 (Tenancy
 > invitation-notification orchestration) complete**: the durable
 > background-processing side of invitation notifications —
 > `INVITATION_CREATED`/`INVITATION_ACCEPTED`/`INVITATION_EXPIRED` domain
@@ -525,7 +560,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 82 files / **831 tests**, re-measured 2026-07-31 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 40/466** (up from 37/450, +3 files/+16 tests — E05-T14: 7 pure event→work-item mapping tests, 2 subscription-shape/ignored-event tests, 7 migration/RLS-consistency tests). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/41 tests** (up from 34, E05-T14 — 7 new invitation-notification-consumer tests: created→`PENDING` work item, duplicate delivery→no duplicate row, accepted/expired→null-recipient work items, replay safety, transaction rollback safety, `MEMBER_JOINED` ignored end-to-end; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T14 added no new fitness test, only a `GlobalRepository` marker + ADR-0026 satisfying an existing rule) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 84 files / **844 tests**, re-measured 2026-07-31 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 42/479** (up from 40/466, +2 files/+13 tests — E05-T15: 11 pure retry/validation-decision tests, 2 grant-migration consistency tests). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/49 tests** (up from 41, E05-T15 — 8 new notification-processing-service tests: successful processing, no-pending-work, replay prevented, two falsifiable SKIP LOCKED concurrency tests, transient-failure retry, repeated-failure-to-FAILED, permanent-failure bypass; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T15 added no new fitness-relevant surface — `claimNextPending`/`markProcessed`/`markFailed` are new methods on an already-`GlobalRepository`-marked class) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |

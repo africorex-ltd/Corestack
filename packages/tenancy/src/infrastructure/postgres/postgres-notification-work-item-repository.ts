@@ -5,7 +5,11 @@ import type { JSONValue, TransactionSql } from "postgres";
 
 import type { NotificationWorkItem } from "../../application/notification-work-item.js";
 import type { NotificationWorkItemRepository } from "../../application/notification-work-item-repository.js";
-import { toNotificationWorkItemRow } from "./mappers/notification-work-item-mapper.js";
+import {
+  toNotificationWorkItem,
+  toNotificationWorkItemRow,
+  type NotificationWorkItemRow,
+} from "./mappers/notification-work-item-mapper.js";
 
 /** Same narrowing `postgres-organization-repository.ts` performs — see that file's doc comment. */
 function sqlOf(tx: TransactionContext): TransactionSql {
@@ -60,6 +64,74 @@ export class PostgresNotificationWorkItemRepository
         ${row.processedAt},
         ${row.lastError}
       )
+    `;
+  }
+
+  /**
+   * `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1)
+   * RETURNING *` — the standard Postgres job-queue claim pattern, and the
+   * mechanism behind this port method's promised claim semantics (see the
+   * port's own doc comment for what's promised, independent of mechanism):
+   *
+   * - The inner `SELECT ... FOR UPDATE SKIP LOCKED` locks exactly the one
+   *   row it selects. A second, concurrent transaction running the same
+   *   statement **skips** any row already locked by the first (that's
+   *   what `SKIP LOCKED` means) rather than blocking on it — so two
+   *   concurrent claims against two available `PENDING` rows each get a
+   *   different row, and two concurrent claims against one available row
+   *   result in exactly one success and one `null`, never both succeeding
+   *   against the same row.
+   * - The outer `UPDATE` — still inside the same statement — transitions
+   *   that one locked row to `PROCESSING` and returns it. Read and
+   *   transition happen atomically; there is no gap a second caller could
+   *   observe.
+   * - After this statement's transaction commits, the row's lock is
+   *   released, but its `status` is now `PROCESSING` — the `WHERE
+   *   status = 'PENDING'` filter is what actually prevents a third caller
+   *   from claiming it again later, not the now-released row lock.
+   *
+   * Ordered `created_at ASC` — oldest pending item claimed first, a
+   * simple FIFO policy; nothing in Section 4 asks for priority ordering.
+   */
+  async claimNextPending(tx: TransactionContext): Promise<NotificationWorkItem | null> {
+    const sql = sqlOf(tx);
+    const rows = await sql<NotificationWorkItemRow[]>`
+      UPDATE tenancy.notification_work_items
+      SET status = 'PROCESSING'
+      WHERE id = (
+        SELECT id FROM tenancy.notification_work_items
+        WHERE status = 'PENDING'
+        ORDER BY created_at ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      RETURNING id, type, organization_id, invitation_id, recipient, payload, status, attempts, created_at, processed_at, last_error
+    `;
+    const row = rows[0];
+    return row === undefined ? null : toNotificationWorkItem(row);
+  }
+
+  /** `WHERE id = ... AND status = 'PROCESSING'` — makes the claim -> mark handshake self-enforcing at the database: this can only ever affect the one row this same caller just claimed, never a row some other caller has since reclaimed. */
+  async markProcessed(tx: TransactionContext, id: string, processedAt: Date): Promise<void> {
+    const sql = sqlOf(tx);
+    await sql`
+      UPDATE tenancy.notification_work_items
+      SET status = 'PROCESSED', processed_at = ${processedAt}, last_error = NULL
+      WHERE id = ${id}::uuid AND status = 'PROCESSING'
+    `;
+  }
+
+  /** Same `AND status = 'PROCESSING'` guard as `markProcessed` — see that method's doc comment. */
+  async markFailed(
+    tx: TransactionContext,
+    id: string,
+    outcome: { readonly status: "PENDING" | "FAILED"; readonly attempts: number; readonly lastError: string },
+  ): Promise<void> {
+    const sql = sqlOf(tx);
+    await sql`
+      UPDATE tenancy.notification_work_items
+      SET status = ${outcome.status}, attempts = ${outcome.attempts}, last_error = ${outcome.lastError}
+      WHERE id = ${id}::uuid AND status = 'PROCESSING'
     `;
   }
 }

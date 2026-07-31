@@ -53,3 +53,8 @@ export {
   INVITATION_NOTIFICATION_CONSUMER,
   type InvitationNotificationConsumerDeps,
 } from "../infrastructure/postgres/invitation-notification-consumer.js";
+export {
+  processNextNotificationWorkItem,
+  type NotificationProcessingDeps,
+  type NotificationProcessingResult,
+} from "../infrastructure/postgres/process-notification-work-item.js";

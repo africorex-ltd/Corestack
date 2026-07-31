@@ -736,3 +736,73 @@
   replay safety, transaction rollback safety, `MEMBER_JOINED` ignored
   end-to-end. Full detail:
   [docs/modules/tenancy-notification-orchestration.md](../../docs/modules/tenancy-notification-orchestration.md).
+
+### Notification processing service (E05-T15)
+
+- Proves the processing lifecycle for E05-T14's durable notification
+  work items — claim, dispatch, and record `PROCESSED`/`FAILED` — with
+  **no real delivery**: no SendGrid/SES/Postmark/SMTP client, no cron
+  job, no worker process, no loop or scheduler anywhere in this package
+  (Section 13).
+- `NotificationDeliveryPort` (`src/application/notification-delivery-port.ts`)
+  — three methods, one per handled type
+  (`deliverInvitationCreated`/`Accepted`/`Expired`), each taking only the
+  fields already typed on `NotificationWorkItem` — never the generic
+  JSONB `payload` blob, and never a provider-specific shape (Section 13).
+  `NotificationDeliveryPermanentError` marks a failure retrying can never
+  fix (an unrecognized `type`, or an `INVITATION_CREATED` item with a
+  `null` recipient).
+- `NotificationWorkItemRepository` gained `claimNextPending`/
+  `markProcessed`/`markFailed` (Section 3). `claimNextPending`'s Postgres
+  implementation: `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP
+  LOCKED LIMIT 1) RETURNING *` — the standard job-queue claim pattern.
+  `markProcessed`/`markFailed` both guard with `AND status =
+  'PROCESSING'`, making the claim -> mark handshake self-enforcing at the
+  database.
+- `decideNotificationFailureOutcome`/`assertNotificationWorkItemDeliverable`
+  (`notification-processing-decisions.ts`) — pure, zero-I/O decision
+  functions, unit-tested without Postgres, mirroring E05-T14's own
+  pure/impure split. `MAX_NOTIFICATION_DELIVERY_ATTEMPTS = 5` is a plain
+  exported constant, deliberately not added to `tenancyConfigSpec` —
+  Section 7 doesn't ask for it to be configurable.
+- `processNextNotificationWorkItem` (`src/infrastructure/postgres/process-notification-work-item.ts`)
+  — one exported function, **two separate transactions** (claim, then
+  mark), with the delivery I/O call running under no transaction at all
+  in between — holding a database transaction open across a slow or
+  hung external call would be the opposite of what a job-queue claim
+  pattern is for.
+- **A real gap this task's own integration tests caught**: E05-T14's
+  migration granted `tenancy_platform` only `SELECT`/`INSERT` on
+  `notification_work_items`, sized for that task's one `INSERT`-only
+  writer. Running this task's own integration suite failed every test
+  immediately with `permission denied for table notification_work_items`
+  from `claimNextPending`'s own `UPDATE`. Fixed with a new, additive
+  migration — `0004_grant-tenancy-platform-update-notification-work-items.sql`
+  — never an edit to the already-shipped 0003.
+- **A known, accepted gap, documented rather than fixed**: a worker that
+  crashes between claiming a row and marking its outcome leaves that row
+  in `PROCESSING` forever — nothing in this task recovers it, since doing
+  so would need the reaper/timer/heartbeat Section 13 explicitly forbids.
+  Recorded in the design doc's "worker model" section for whichever
+  future task adds real background processing.
+- **The two SKIP LOCKED concurrency tests were rewritten to be
+  falsifiable.** A first draft raced two bare `processNextNotificationWorkItem`
+  calls via `Promise.all` — this can pass even if `SKIP LOCKED` were
+  silently removed, since nothing guarantees the two claims' underlying
+  `SELECT` statements ever genuinely overlap. Replaced with a version
+  that holds one claim's transaction open past its own commit via an
+  explicit gate, so the second claim can only be awaited while the
+  first's row lock is still live — verified directly by temporarily
+  removing `SKIP LOCKED` and confirming both tests then hang until
+  timeout, then restoring it and re-confirming the full suite green
+  twice.
+- 13 new unit tests (tenancy package: 466→479 unit tests, 40→42 files):
+  11 pure retry/validation-decision tests, 2 grant-migration consistency
+  tests. 8 new real-Postgres integration tests (tenancy package: 41→49
+  integration tests): successful processing, no-pending-work, replay
+  prevented, the two falsifiable SKIP LOCKED concurrency tests, a
+  transient failure incrementing attempts/lastError/returning to
+  `PENDING`, repeated failures exhausting the retry budget into terminal
+  `FAILED`, and a permanently malformed item failing immediately. Full
+  detail:
+  [docs/modules/tenancy-notification-processing.md](../../docs/modules/tenancy-notification-processing.md).

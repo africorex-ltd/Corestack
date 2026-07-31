@@ -48,9 +48,10 @@ src/
   application/                createOrganization (E05-T03) + inviteMember (E05-T06) + acceptInvitation (E05-T07) use cases; getOrganization + listOrganizationMembers + listPendingInvitations queries (E05-T12); repository ports, event contracts, config spec, module factory
   infrastructure/postgres/schema/  Drizzle table definitions (E05-T09) — schema only
   infrastructure/postgres/rls/     RLS policy DDL generators (E05-T10)
-  infrastructure/postgres/postgres-*-repository.ts  Real Postgres repository adapters (E05-T11), plus PostgresNotificationWorkItemRepository (E05-T14)
+  infrastructure/postgres/postgres-*-repository.ts  Real Postgres repository adapters (E05-T11), plus PostgresNotificationWorkItemRepository (E05-T14, extended with claim/mark ops in E05-T15)
   infrastructure/postgres/invitation-notification-consumer.ts  Invitation-notification event subscription (E05-T14) — built and exported, not wired into the module scaffold
-  postgres/                   `./postgres` package export barrel (E05-T11) — repositories, mappers, role bootstrap, RLS generators, constraint-violation helpers, notification work-item repository + consumer (E05-T14)
+  infrastructure/postgres/process-notification-work-item.ts  Notification processing service (E05-T15) — claims, dispatches, and records one work item per call; no loop, no scheduler
+  postgres/                   `./postgres` package export barrel (E05-T11) — repositories, mappers, role bootstrap, RLS generators, constraint-violation helpers, notification work-item repository + consumer (E05-T14) + processing service (E05-T15)
   interface/http/              Thin HTTP interface (E05-T13) — 6 route handlers, context extraction, error mapping, validation; `./interface` package export barrel
   testing/                    reserved — adopter-facing fakes land in E05-T28
 test-support/                 in-memory repositories + workflow harness + event collector (E05-T08) — internal, project-only; not exported, not adopter-facing
@@ -72,10 +73,47 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11) + query services (E05-T12) + HTTP interface (E05-T13) + notification orchestration (E05-T14)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11) + query services (E05-T12) + HTTP interface (E05-T13) + notification orchestration (E05-T14) + notification processing service (E05-T15)
 
 What exists today:
 
+- **Notification processing service** (`src/application/notification-delivery-port.ts`,
+  `notification-processing-decisions.ts`,
+  `src/infrastructure/postgres/process-notification-work-item.ts`,
+  exported from `@corestack/tenancy/postgres`, E05-T15) — proves the
+  claim/dispatch/record lifecycle for durable notification work items
+  (E05-T14) end to end, still with **no real delivery**: an internal
+  `NotificationDeliveryPort` (`deliverInvitationCreated`/`Accepted`/`Expired`)
+  is the only thing a real provider would ever implement, and the only
+  implementation anywhere in this codebase today is
+  `RecordingNotificationDeliveryAdapter` (`test-support/`), which just
+  records calls. `processNextNotificationWorkItem` — one exported
+  function, no loop, no scheduler, no daemon (Section 13) — claims at
+  most one `PENDING` row per call via `UPDATE ... WHERE id = (SELECT ...
+  FOR UPDATE SKIP LOCKED LIMIT 1)` (the standard Postgres job-queue claim
+  pattern), dispatches it to the injected delivery port with **no
+  database transaction open** during that call, then records `PROCESSED`
+  or `FAILED` in a second transaction. Two failure categories: an
+  ordinary thrown error is transient (attempts increment, retried up to
+  `MAX_NOTIFICATION_DELIVERY_ATTEMPTS`, then terminal `FAILED`); an
+  unrecognized `type` or an `INVITATION_CREATED` item with no recipient
+  throws `NotificationDeliveryPermanentError` and fails immediately,
+  bypassing the retry budget entirely, since retrying can never fix
+  either condition. **A known, accepted gap, not fixed by this task**: a
+  worker that crashes between claiming a row and marking its outcome
+  leaves that row in `PROCESSING` forever — nothing in this task
+  recovers it, since doing so would require the reaper/timer/heartbeat
+  Section 13 explicitly forbids; see the design doc's "worker model"
+  section. New migration
+  (`migrations/tenancy/0004_grant-tenancy-platform-update-notification-work-items.sql`)
+  grants `tenancy_platform` the `UPDATE` privilege E05-T14's own
+  migration omitted — this task's own integration suite caught the gap
+  immediately (`permission denied for table notification_work_items`).
+  11 new unit tests (pure retry/validation decisions) and 8 new
+  real-Postgres integration tests, including two concurrency tests
+  deliberately built to hang rather than silently pass if `SKIP LOCKED`
+  were ever removed. Full detail:
+  [docs/modules/tenancy-notification-processing.md](../../docs/modules/tenancy-notification-processing.md).
 - **Invitation-notification orchestration** (`src/application/notification-work-item.ts`,
   `build-notification-work-item.ts`, `src/infrastructure/postgres/postgres-notification-work-item-repository.ts`,
   `invitation-notification-consumer.ts`, exported from `@corestack/tenancy/postgres`, E05-T14) —
@@ -383,8 +421,8 @@ What exists today:
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and the real table + RLS migration
   (`migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10).
-- 40 unit test files (466 tests) plus 1 real-Postgres integration test
-  file (41 tests, `pnpm test:integration`) covering the module scaffold (compilation
+- 42 unit test files (479 tests) plus 1 real-Postgres integration test
+  file (49 tests, `pnpm test:integration`) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -430,9 +468,15 @@ What exists today:
   unit tests (E05-T14: 7 pure event→work-item mapping tests, 2
   subscription-shape/ignored-event tests, 7 migration/RLS consistency
   tests) and 7 new real-Postgres integration tests (created/duplicate/
-  accepted/expired/replay/rollback/ignored-event) — 41 real-Postgres
-  integration tests in total (E05-T11 + E05-T12 + E05-T13 + E05-T14),
-  40 unit test files (466 tests) overall.
+  accepted/expired/replay/rollback/ignored-event) — plus 13 new
+  notification-processing unit tests (E05-T15: 11 pure retry/validation
+  decision tests, 2 grant-migration consistency tests) and 8 new
+  real-Postgres integration tests (successful processing, no-pending-work,
+  replay-prevented, two falsifiable SKIP LOCKED concurrency tests,
+  transient-failure retry, repeated-failure-to-FAILED, permanent-failure
+  bypass) — 49 real-Postgres integration tests in total (E05-T11 +
+  E05-T12 + E05-T13 + E05-T14 + E05-T15), 42 unit test files (479 tests)
+  overall.
 
 ## What is intentionally **not** implemented
 
@@ -520,13 +564,19 @@ What exists today:
   extraction" section); anonymous acceptance and admin bypasses remain
   explicitly out of scope (Section 1 of the E05-T13 directive).
 - **Real email delivery, external providers, and any scheduler/worker
-  process.** E05-T14 (see above) makes invitation events produce durable
-  `PENDING` work items, but nothing reads them: no SendGrid/SES/Postmark/
-  SMTP client, no cron job, no background worker exists anywhere in this
-  package. `createInvitationNotificationSubscription` is exported but not
-  registered into `createTenancyModule`'s `eventHandlers`. See
-  tenancy-notification-orchestration.md's "Why no email is sent yet" and
-  "Future delivery adapters" sections.
+  process.** E05-T15 (see above) proves `PENDING` work items can be
+  claimed, delivered, and marked reliably, but still with no real
+  delivery: no SendGrid/SES/Postmark/SMTP client, no cron job, no
+  background worker exists anywhere in this package.
+  `createInvitationNotificationSubscription` is exported but not
+  registered into `createTenancyModule`'s `eventHandlers`;
+  `processNextNotificationWorkItem` is exported but nothing calls it
+  repeatedly. See tenancy-notification-orchestration.md's "Why no email
+  is sent yet" and tenancy-notification-processing.md's "Worker model"
+  and "Future provider integration" sections — including the documented,
+  accepted gap that a crashed worker leaves a claimed row stuck in
+  `PROCESSING` forever, unresolved by this task on purpose (closing it
+  needs the scheduler this task is explicitly told not to build).
 - **Pagination, filtering, and search on the query services.** Both list
   queries return every matching row in one call; neither accepts a role
   filter, a search term, or a cursor/limit parameter (Section 14 of the
@@ -553,14 +603,19 @@ What exists today:
 
 ## Next task
 
-**E05-T15**: not yet specified by the founder directive sequence. Not
-started. Per Section 14 of the E05-T14 directive, real notification
-delivery, background workers, and any wiring into `createTenancyModule`'s
-`eventHandlers` are explicitly **not** to be started automatically — it
-waits for an explicit E05-T15 prompt.
+**E05-T16**: not yet specified by the founder directive sequence. Not
+started. Per Section 14 of the E05-T15 directive, real email integration
+is explicitly **not** to be started automatically — it waits for an
+explicit E05-T16 prompt.
 
 ## See also
 
+- [docs/modules/tenancy-notification-processing.md](../../docs/modules/tenancy-notification-processing.md) —
+  the notification processing service (E05-T15): claim lifecycle, the
+  two-transaction design rationale, SKIP LOCKED mechanics (including how
+  the concurrency tests were made falsifiable), retry/failure-category
+  semantics, the worker model, the documented crashed-worker
+  `PROCESSING`-orphan gap, and future provider integration.
 - [docs/modules/tenancy-notification-orchestration.md](../../docs/modules/tenancy-notification-orchestration.md) —
   invitation-notification orchestration (E05-T14): event flow, the
   single-wildcard-subscription rationale, idempotency/atomicity/role-
