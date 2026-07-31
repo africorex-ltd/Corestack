@@ -58,3 +58,16 @@ export {
   type NotificationProcessingDeps,
   type NotificationProcessingResult,
 } from "../infrastructure/postgres/process-notification-work-item.js";
+
+export {
+  toNotificationDeliveryPayload,
+  toNotificationDeliveryPayloadRow,
+  type NotificationDeliveryPayloadRow,
+  type NotificationDeliveryPayloadRowValues,
+} from "../infrastructure/postgres/mappers/notification-delivery-payload-mapper.js";
+export { PostgresNotificationDeliveryPayloadRepository } from "../infrastructure/postgres/postgres-notification-delivery-payload-repository.js";
+export {
+  deliverNotificationWorkItemAsJsonPayload,
+  type NotificationPayloadDeliveryDeps,
+  type NotificationPayloadDeliveryResult,
+} from "../infrastructure/postgres/notification-payload-delivery-adapter.js";

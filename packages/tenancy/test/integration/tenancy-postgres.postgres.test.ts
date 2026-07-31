@@ -72,8 +72,11 @@ import {
   PostgresNotificationWorkItemRepository,
   createInvitationNotificationSubscription,
   processNextNotificationWorkItem,
+  PostgresNotificationDeliveryPayloadRepository,
+  deliverNotificationWorkItemAsJsonPayload,
 } from "../../src/postgres/index.js";
 import { MAX_NOTIFICATION_DELIVERY_ATTEMPTS } from "../../src/application/notification-processing-decisions.js";
+import { buildNotificationDeliveryPayload } from "../../src/application/notification-delivery-payload.js";
 import type { NotificationWorkItem } from "../../src/application/notification-work-item.js";
 import { RecordingNotificationDeliveryAdapter } from "../../test-support/recording-notification-delivery-adapter.js";
 import {
@@ -1498,5 +1501,135 @@ describe("Notification processing service (E05-T15)", () => {
     const row = await loadWorkItem(id);
     expect(row.status).toBe("FAILED");
     expect(row.attempts).toBe(1);
+  });
+});
+
+describe("JSON delivery payload adapter (E05-T16)", () => {
+  /** A fresh org, real row in tenancy.organizations — notification_delivery_payloads FKs to it. */
+  async function seedOrganization(): Promise<string> {
+    const organization = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), organization));
+    return organization.id.value;
+  }
+
+  /** A `NotificationWorkItem` built purely in memory — this describe block never inserts into `notification_work_items`, since the adapter under test takes a bare item, not a row id. */
+  function buildWorkItem(overrides: Partial<NotificationWorkItem> = {}): NotificationWorkItem {
+    return {
+      id: randomUUID(),
+      type: "INVITATION_CREATED",
+      organizationId: randomUUID(),
+      invitationId: randomUUID(),
+      recipient: "invitee@example.com",
+      payload: {},
+      status: "PROCESSING",
+      attempts: 0,
+      createdAt: REFERENCE_DATE,
+      processedAt: null,
+      lastError: null,
+      ...overrides,
+    };
+  }
+
+  const payloadRepository = new PostgresNotificationDeliveryPayloadRepository();
+  async function findPayloadById(id: string) {
+    return new PostgresUnitOfWork(appRoleSql, null).run(async (tx) => {
+      await tx.sql.unsafe(`SET LOCAL ROLE ${TENANCY_PLATFORM_ROLE}`);
+      return payloadRepository.findById(tx, id);
+    });
+  }
+
+  async function countRows(id: string): Promise<number> {
+    const rows = await superuserSql<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tenancy.notification_delivery_payloads WHERE id = ${id}::uuid
+    `;
+    return Number(rows[0]?.count ?? "0");
+  }
+
+  it("durable persistence: stores exactly the payload buildNotificationDeliveryPayload produces, readable back via findById", async () => {
+    const organizationId = await seedOrganization();
+    const item = buildWorkItem({ organizationId });
+    const expected = buildNotificationDeliveryPayload(item);
+
+    const result = await deliverNotificationWorkItemAsJsonPayload(item, { sql: appRoleSql });
+
+    expect(result).toEqual({ success: true, payloadId: item.id });
+
+    const stored = await findPayloadById(item.id);
+    expect(stored).toEqual(expected);
+  });
+
+  it("stores the real, queryable columns (organization_id/notification_type/recipient/created_at) matching Section 6", async () => {
+    const organizationId = await seedOrganization();
+    const item = buildWorkItem({ organizationId, recipient: "someone@example.com" });
+
+    await deliverNotificationWorkItemAsJsonPayload(item, { sql: appRoleSql });
+
+    const rows = await superuserSql<
+      { organization_id: string; notification_type: string; recipient: string | null; created_at: Date }[]
+    >`
+      SELECT organization_id, notification_type, recipient, created_at
+      FROM tenancy.notification_delivery_payloads WHERE id = ${item.id}::uuid
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      organization_id: organizationId,
+      notification_type: "INVITATION_CREATED",
+      recipient: "someone@example.com",
+    });
+    expect(rows[0]?.created_at.toISOString()).toBe(REFERENCE_DATE.toISOString());
+  });
+
+  it.each([
+    ["INVITATION_CREATED", "invitation-created", "invitee@example.com"],
+    ["INVITATION_ACCEPTED", "invitation-accepted", null],
+    ["INVITATION_EXPIRED", "invitation-expired", null],
+  ] as const)("template mapping: %s stores template %s (Section 4)", async (type, template, recipient) => {
+    const organizationId = await seedOrganization();
+    const item = buildWorkItem({ organizationId, type, recipient });
+
+    await deliverNotificationWorkItemAsJsonPayload(item, { sql: appRoleSql });
+
+    const stored = await findPayloadById(item.id);
+    expect(stored?.template).toBe(template);
+    expect(stored?.notificationType).toBe(type);
+  });
+
+  it("variable mapping: variables carry only invitationId, metadata only organizationId (Section 5)", async () => {
+    const organizationId = await seedOrganization();
+    const item = buildWorkItem({ organizationId });
+
+    await deliverNotificationWorkItemAsJsonPayload(item, { sql: appRoleSql });
+
+    const stored = await findPayloadById(item.id);
+    expect(stored?.variables).toEqual({ invitationId: item.invitationId });
+    expect(stored?.metadata).toEqual({ organizationId: item.organizationId });
+  });
+
+  it("deterministic JSON: two independently-built payloads from the same item serialize identically", async () => {
+    const organizationId = await seedOrganization();
+    const item = buildWorkItem({ organizationId });
+
+    await deliverNotificationWorkItemAsJsonPayload(item, { sql: appRoleSql });
+    const stored = await findPayloadById(item.id);
+
+    expect(JSON.stringify(stored)).toBe(JSON.stringify(buildNotificationDeliveryPayload(item)));
+  });
+
+  it("replay safety: delivering the same work item twice leaves exactly one row, unchanged", async () => {
+    const organizationId = await seedOrganization();
+    const item = buildWorkItem({ organizationId });
+
+    const first = await deliverNotificationWorkItemAsJsonPayload(item, { sql: appRoleSql });
+    const second = await deliverNotificationWorkItemAsJsonPayload(item, { sql: appRoleSql });
+
+    expect(first).toEqual(second);
+    expect(await countRows(item.id)).toBe(1);
+
+    const stored = await findPayloadById(item.id);
+    expect(stored).toEqual(buildNotificationDeliveryPayload(item));
+  });
+
+  it("findById returns null for a payload that was never stored", async () => {
+    expect(await findPayloadById(randomUUID())).toBeNull();
   });
 });

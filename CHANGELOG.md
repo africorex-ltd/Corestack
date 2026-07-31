@@ -1466,6 +1466,31 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   Full build/typecheck/lint/test/integration-test/architecture-fitness/
   export-snapshot gate green repo-wide (tenancy 466→479 unit tests,
   40→42 files; integration file 41→49 tests, run twice for stability).
+- **E05-T16: Tenancy JSON delivery payload adapter (2026-07-31).**
+  Converts a `NotificationWorkItem` into a stable, provider-agnostic
+  `NotificationDeliveryPayload` and stores it durably — still **no
+  network I/O**. `buildNotificationDeliveryPayload` is pure and reuses
+  the source work item's own `id`/`createdAt` rather than minting fresh
+  ones — the decision that makes the payload deterministic and makes
+  `store` (`INSERT ... ON CONFLICT (id) DO NOTHING`) a true idempotent
+  upsert rather than a plain insert, satisfying "replay safety" by
+  construction rather than by a separate dedup mechanism. Template/
+  subject mapping is a `Record` keyed by the full `NotificationWorkItemType`
+  union, so a fourth type without an update is a compile error, not a
+  runtime `undefined`. New table
+  (`0005_create-notification-delivery-payloads.sql`, RLS reusing the same
+  generator every other tenancy table uses) and a new `GlobalRepository`
+  (`PostgresNotificationDeliveryPayloadRepository`, citing ADR-0026).
+  **Deliberately not an implementation of E05-T15's `NotificationDeliveryPort`**
+  — that port's methods don't carry the `id`/`createdAt` this payload
+  needs to stay deterministic, so this adapter takes a bare work item
+  directly and is not wired into `processNextNotificationWorkItem`; that
+  composition is left for whichever future task builds a real provider
+  adapter. Full detail:
+  [tenancy-delivery-payloads.md](docs/modules/tenancy-delivery-payloads.md).
+  Full build/typecheck/lint/test/integration-test/architecture-fitness/
+  export-snapshot gate green repo-wide (tenancy 479→496 unit tests,
+  42→44 files; integration file 49→58 tests, run twice for stability).
 
 <!--
 Template for release-train entries:

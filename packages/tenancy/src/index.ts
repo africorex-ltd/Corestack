@@ -187,3 +187,11 @@ export {
   decideNotificationFailureOutcome,
   assertNotificationWorkItemDeliverable,
 } from "./application/notification-processing-decisions.js";
+
+export type { NotificationDeliveryPayload } from "./application/notification-delivery-payload.js";
+export {
+  NOTIFICATION_TEMPLATE_BY_TYPE,
+  NOTIFICATION_SUBJECT_BY_TYPE,
+  buildNotificationDeliveryPayload,
+} from "./application/notification-delivery-payload.js";
+export type { NotificationDeliveryPayloadRepository } from "./application/notification-delivery-payload-repository.js";

@@ -806,3 +806,61 @@
   `FAILED`, and a permanently malformed item failing immediately. Full
   detail:
   [docs/modules/tenancy-notification-processing.md](../../docs/modules/tenancy-notification-processing.md).
+
+### JSON delivery payload adapter (E05-T16)
+
+- `NotificationDeliveryPayload` (`notification-delivery-payload.ts`) — a
+  stable, provider-agnostic JSON shape: `id`/`notificationType`/
+  `recipient`/`subject`/`template`/`variables`/`metadata`/`createdAt`.
+  Built by one pure function, `buildNotificationDeliveryPayload(item)` —
+  no `IdGenerator`, no `Clock`, no repository. **`id`/`createdAt` are
+  reused from the source work item, not freshly minted** — the decision
+  that makes the payload deterministic (Section 3) and makes `store` a
+  true idempotent upsert rather than a plain `INSERT` (Section 8's
+  "replay safety"). Template/subject mapping
+  (`INVITATION_CREATED`→`invitation-created`, etc.) is a `Record` keyed
+  by the full `NotificationWorkItemType` union, not `Record<string,
+  string>`, so a fourth type without an update here is a compile error.
+  `variables` carries only `invitationId` (what a template interpolates);
+  `metadata` carries only `organizationId` (audit/tracing context) — never
+  `status`/`attempts`/`processedAt`/`lastError`.
+- `NotificationDeliveryPayloadRepository` (`store`/`findById`) — new
+  `tenancy.notification_delivery_payloads` table
+  (`migrations/tenancy/0005_create-notification-delivery-payloads.sql`),
+  RLS reusing the same `buildOrgScopedTableRlsDdl` generator every other
+  tenancy table already uses. `organization_id` is not one of Section 3's
+  payload fields (it lives inside `payload.metadata.organizationId`) but
+  is promoted to a real, indexed, RLS-scoped column anyway — every durable
+  tenancy table carries one (ADR-0008), and omitting it here would be a
+  silent regression of that policy. `store` is `INSERT ... ON CONFLICT
+  (id) DO NOTHING` — idempotent by construction, since the same work item
+  always builds the identical payload under the identical id.
+  `PostgresNotificationDeliveryPayloadRepository` implements
+  `GlobalRepository`, citing ADR-0026 — the same "background adapter, no
+  `OrgScopedContext`" reasoning as `PostgresNotificationWorkItemRepository`.
+- `deliverNotificationWorkItemAsJsonPayload` (`notification-payload-delivery-adapter.ts`)
+  — builds a work item's payload and stores it in one elevated
+  `PostgresUnitOfWork` transaction, returning `{ success: true, payloadId
+  }`. No network I/O anywhere in this file.
+- **Deliberately not an implementation of E05-T15's `NotificationDeliveryPort`.**
+  That port's three methods each take a narrow, per-type payload
+  (`organizationId`/`invitationId`/`recipient` only, deliberately
+  excluding the work item's own `id`/`createdAt`) — exactly the two fields
+  this task's payload needs to stay deterministic. Rather than changing
+  T15's already-shipped contract, this adapter takes a bare
+  `NotificationWorkItem` directly and is **not wired into**
+  `processNextNotificationWorkItem` by this task — a composition decision
+  left for whichever future task builds a real provider adapter. See the
+  design doc's "Deliberately not an implementation of
+  NotificationDeliveryPort" section.
+- 17 new unit tests (tenancy package: 479→496 unit tests, 42→44 files):
+  10 pure builder tests (full Section 3 shape, id/createdAt reuse,
+  template mapping, non-empty subjects, `recipient: null` passthrough,
+  variable/metadata contents, determinism, non-collision) and 7 migration
+  consistency tests. 8 new real-Postgres integration tests (tenancy
+  package: 49→58 integration tests): durable persistence, real-column
+  projection, template mapping for all three types, variable/metadata
+  mapping, deterministic JSON end-to-end, replay safety (delivering the
+  same item twice leaves exactly one row), and `findById` returning
+  `null` for an unstored id. Full detail:
+  [docs/modules/tenancy-delivery-payloads.md](../../docs/modules/tenancy-delivery-payloads.md).

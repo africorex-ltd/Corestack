@@ -2,7 +2,30 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-31** — **E05-T15 (Tenancy
+> estimated. Last update: **2026-07-31** — **E05-T16 (Tenancy JSON
+> delivery payload adapter) complete**: converts a `NotificationWorkItem`
+> into a stable, provider-agnostic `NotificationDeliveryPayload` and
+> stores it durably — still **no network I/O**.
+> `buildNotificationDeliveryPayload` is pure and reuses the source work
+> item's own `id`/`createdAt` rather than minting fresh ones — the
+> decision that makes the payload deterministic and makes `store`
+> (`INSERT ... ON CONFLICT (id) DO NOTHING`) a true idempotent upsert,
+> satisfying "replay safety" by construction. Template/subject mapping is
+> a `Record` keyed by the full `NotificationWorkItemType` union, so a
+> fourth type without an update is a compile error. New table
+> (`0005_create-notification-delivery-payloads.sql`, RLS reusing the same
+> generator every other tenancy table uses) and a new `GlobalRepository`
+> (`PostgresNotificationDeliveryPayloadRepository`, citing ADR-0026).
+> **Deliberately not an implementation of E05-T15's `NotificationDeliveryPort`**
+> — that port's methods don't carry the `id`/`createdAt` this payload
+> needs, so this adapter takes a bare work item directly and is not wired
+> into `processNextNotificationWorkItem`; that composition is left for a
+> future provider-adapter task. Full detail:
+> [tenancy-delivery-payloads.md](../modules/tenancy-delivery-payloads.md).
+> Full build/typecheck/lint/test/integration-test/architecture-fitness/
+> export-snapshot gate green repo-wide (tenancy unit tests 479→496,
+> 42→44 files; integration file 49→58 tests, run twice for stability).
+> Prior update: **2026-07-31** — **E05-T15 (Tenancy
 > notification processing service) complete**: proves the claim/dispatch/
 > record lifecycle for E05-T14's durable notification work items — still
 > **no real delivery** (no SendGrid/SES/Postmark/SMTP client, no cron
@@ -560,7 +583,7 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 84 files / **844 tests**, re-measured 2026-07-31 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 42/479** (up from 40/466, +2 files/+13 tests — E05-T15: 11 pure retry/validation-decision tests, 2 grant-migration consistency tests). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/49 tests** (up from 41, E05-T15 — 8 new notification-processing-service tests: successful processing, no-pending-work, replay prevented, two falsifiable SKIP LOCKED concurrency tests, transient-failure retry, repeated-failure-to-FAILED, permanent-failure bypass; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T15 added no new fitness-relevant surface — `claimNextPending`/`markProcessed`/`markFailed` are new methods on an already-`GlobalRepository`-marked class) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 86 files / **861 tests**, re-measured 2026-07-31 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 44/496** (up from 42/479, +2 files/+17 tests — E05-T16: 10 pure payload-builder tests, 7 migration-consistency tests). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/58 tests** (up from 49, E05-T16 — 8 new JSON-delivery-payload-adapter tests: durable persistence, real-column projection, template mapping for all three types, variable/metadata mapping, deterministic JSON, replay safety, `findById` miss; `pnpm test:integration` against real PostgreSQL 18, run twice for stability). Architecture-fitness stayed at 5/36 (E05-T16 added no new fitness-relevant surface — the new repository passes ADR-0021's rule the same way `PostgresNotificationWorkItemRepository` does, citing ADR-0026) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
