@@ -34,6 +34,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
+    },
+    "./interface": {
+      "types": "./dist/interface/index.d.ts",
+      "import": "./dist/interface/index.js"
     }
   },
   "files": [

@@ -1341,6 +1341,52 @@ CONFLICT` on the same key genuinely **blocks** on Postgres's row-level
   378→391 unit tests, 24→27 files; integration file 16→20 tests, run
   twice for stability; architecture-fitness unchanged at 36).
 
+- **E05-T13: Tenancy HTTP interface (2026-07-30).** A thin HTTP
+  adaptation layer over the existing use cases and query services — six
+  routes (`POST /organizations`, `POST /organizations/:id/invitations`,
+  `POST /invitations/:id/accept`, `GET /organizations/:id`, `GET
+  /organizations/:id/members`, `GET /organizations/:id/invitations`),
+  new `src/interface/http/` (filling in the E05-T01 reserved barrel),
+  exported from a new `./interface` subpath. **No new repository method,
+  use case, or query was added.** No HTTP framework exists anywhere in
+  this monorepo yet (confirmed by search) — every handler is a plain
+  `async` function with one `try`/`catch`; `tenancyRoutes` is
+  declarative route metadata a future Hono binding would register, not a
+  router this package implements (Section 14: no controller framework,
+  no middleware abstractions, no DI container).
+  **`context.organizationId` always comes from an `X-Organization-Id`
+  header, never the URL path** — even on routes whose path also names an
+  organization — a deliberate stand-in for a real authentication
+  provider (explicitly out of scope), validated as UUID-shaped
+  everywhere it's used. **404, never 403, for cross-tenant reads**: `GET
+  /organizations/:id` relies entirely on RLS via `getOrganization`'s
+  existing target-vs-context shape (E05-T12); the two list routes call
+  `getOrganization` as an explicit pre-check before their own list query,
+  since neither underlying query service has an independent target
+  parameter — without that pre-check the path `:id` would be silently
+  ignored, returning the wrong organization's data. One error-mapping
+  function derives HTTP status from the kernel `CoreError` taxonomy
+  (`ValidationError`→400, `NotFoundError`→404, `ConflictError`→409,
+  `ForbiddenError`→403, `UnauthorizedError`→401, anything else→500 with a
+  fixed, non-leaking body) — every tenancy-specific error class already
+  extends one of these five, so the table needs no per-class entry.
+  Documented, deliberate divergences from the future full API standard
+  (`docs/architecture/API.md` §19–22): 400 not 422, `{code, message,
+  metadata}` not RFC 9457 `problem+json`, bare arrays not `{data,
+  pagination}`, no `/v1` prefix. Sharpest trust-boundary limitation,
+  documented explicitly: `POST /invitations/:id/accept` has no
+  organization id in its path at all, and takes the accepting user's
+  claimed `email` from the request body — the security of the route
+  rests entirely on `acceptInvitation`'s own pre-existing email-equality
+  check, a gap this route inherits, not one it closes. Full detail:
+  [tenancy-http-interface.md](docs/modules/tenancy-http-interface.md).
+  No authentication providers, no background jobs, no anonymous
+  invitation acceptance, no pagination, no filtering, no search. Full
+  build/typecheck/lint/test/integration-test/architecture-fitness/
+  export-snapshot gate green repo-wide (tenancy 391→450 unit tests,
+  27→37 files; integration file 20→34 tests, run twice for stability;
+  architecture-fitness unchanged at 36).
+
 <!--
 Template for release-train entries:
 

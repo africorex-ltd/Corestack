@@ -51,13 +51,16 @@ export function createTenancyModule(
   // yet: a purge handler that silently no-ops would let the purge protocol
   // mark Tenancy's purge "completed" while deleting nothing once real data
   // exists later — worse than not registering at all. Throwing keeps the
-  // gap loud until E05-T13 implements the real delete.
+  // gap loud until a future task implements the real delete. (E05-T13
+  // turned out to be the HTTP interface layer, not purge logic — this
+  // comment originally guessed T13 for the real delete; not yet
+  // resequenced by the founder directive.)
   const purgeSubscription = registerPurgeHandler(
     "tenancy",
     async () => {
       throw new Error(
         "tenancy purge handler is not implemented yet (scaffold-only, E05-T01); " +
-          "real deletion logic ships in E05-T13",
+          "real deletion logic ships in a future task",
       );
     },
     deps.processedEventStore,

@@ -1,5 +1,27 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`tenancy public surface > runtime exports are intentional (./interface subpath) 1`] = `
+[
+  "buildContext",
+  "buildOrgScopedContext",
+  "extractActorId",
+  "extractOrganizationId",
+  "extractRequestId",
+  "handleAcceptInvitation",
+  "handleCreateOrganization",
+  "handleGetOrganization",
+  "handleInviteMember",
+  "handleListOrganizationMembers",
+  "handleListPendingInvitations",
+  "mapErrorToHttpResponse",
+  "parseBody",
+  "parseEmail",
+  "parseUuid",
+  "requireHeader",
+  "tenancyRoutes",
+]
+`;
+
 exports[`tenancy public surface > runtime exports are intentional (./postgres subpath) 1`] = `
 [
   "PostgresInvitationRepository",

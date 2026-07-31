@@ -571,3 +571,87 @@
   no pagination, no filtering, no search — all explicitly out of scope
   per this task's founder directive. Full detail:
   [docs/modules/tenancy-query-services.md](../../docs/modules/tenancy-query-services.md).
+
+### HTTP interface (E05-T13)
+
+- A thin HTTP adaptation layer over the existing application use cases
+  and query services — six routes (`POST /organizations`, `POST
+  /organizations/:id/invitations`, `POST /invitations/:id/accept`, `GET
+  /organizations/:id`, `GET /organizations/:id/members`, `GET
+  /organizations/:id/invitations`), new `src/interface/http/` (filling in
+  the E05-T01 reserved `src/interface/` barrel), exported from a new
+  `./interface` package subpath. **No new repository method, use case, or
+  query was added** — every route calls an existing service unchanged.
+- **No HTTP framework anywhere in this monorepo** (confirmed by search
+  before writing any code) — every route handler is a plain `async`
+  function, `(request, deps) => Promise<response>`, with one
+  `try`/`catch`; `tenancyRoutes` is declarative `{method, path, handler}`
+  metadata a future Hono binding (per `ARCHITECTURE.md` §10) would
+  register, not a router this package implements or matches against
+  itself (Section 14: "do not introduce a controller framework... do not
+  introduce middleware abstractions... do not introduce a dependency
+  injection container").
+- **`context.organizationId` always comes from an `X-Organization-Id`
+  header, never the URL path** — even on the four routes whose path also
+  names an organization (`docs/security/how-to-build-a-tenant-safe-feature.md`
+  step 1). A path segment naming an organization is a *claim*, checked
+  against the header either by the use case itself (`inviteMember`'s own
+  existing `ForbiddenError` on mismatch) or by RLS (`getOrganization`'s
+  mirrored target/context shape from E05-T12) — never used to construct
+  scope. `X-Actor-Id`/`X-Organization-Id` are a deliberate, documented
+  stand-in for a real authentication provider (explicitly out of scope
+  per Section 1), validated as UUID-shaped on every route.
+- **404, never 403, for cross-tenant reads (Section 8)**: `GET
+  /organizations/:id` relies entirely on RLS via `getOrganization`'s
+  existing target-vs-context shape. `GET /organizations/:id/members`/
+  `.../invitations` call `getOrganization` as an explicit pre-check
+  before their own list query — neither `listOrganizationMembers` nor
+  `listPendingInvitations` has an independent target parameter (E05-T12
+  deliberately did not add one), so without this pre-check the path `:id`
+  would be silently ignored, returning the wrong organization's data
+  rather than a 404.
+- **One error-mapping function**, `mapErrorToHttpResponse`
+  (`errors.ts`): `ValidationError`→400, `NotFoundError`→404,
+  `ConflictError`→409, `ForbiddenError`→403, `UnauthorizedError`→401,
+  anything else→500 with a fixed, generic body that never reads
+  `error.message`/`.stack`. Every tenancy-specific error class already
+  extends one of the first five kernel classes, so this table needs no
+  per-tenancy-error-class entry. One documented consequence: the invite
+  route's `role` field is restricted to `z.enum(["ADMIN", "MEMBER"])` at
+  the interface layer, which makes `CannotInviteOwnerError` unreachable
+  via HTTP (it remains reachable, and tested, for direct non-HTTP callers
+  of `inviteMember`).
+- **Deliberate, documented divergences from the future full API
+  standard** (`docs/architecture/API.md` §19–22): 400 not 422; `{code,
+  message, metadata}` not RFC 9457 `problem+json`; bare arrays not
+  `{data, pagination}`; no `/v1` prefix — each traced to a specific
+  Section of this task's founder directive, not an oversight.
+- **The sharpest trust-boundary limitation**: `POST
+  /invitations/:id/accept` has no organization id in its path at all
+  (`acceptInvitation`'s own command has no `organizationId` field);
+  `context.organizationId` comes from `X-Organization-Id`, `userId` from
+  `X-Actor-Id`, but `email` comes from the request body — the claim
+  `acceptInvitation` checks against `invitation.email`. Without a real
+  authentication provider, nothing verifies the body-supplied email
+  belongs to the caller; the security of this route rests entirely on
+  that equality check, a pre-existing gap `accept-invitation-usecase.md`
+  already documented and this route inherits, not one it closes.
+- 73 new tests total: 59 unit tests (tenancy package: 391→450 unit tests,
+  27→37 files — `validation.ts`/`context.ts`/`errors.ts` helpers plus one
+  test file per route handler against in-memory test doubles; genuine
+  cross-tenant invisibility is not representable in-memory, since
+  `InMemoryOrganizationRepository.findById` ignores context — every such
+  test is annotated, not silently omitted) and 14 new Postgres
+  integration tests (tenancy package: 20→34 integration tests) covering
+  successful create/invite/accept, successful reads, a validation
+  failure, duplicate conflicts, an authorization failure, and — the
+  property that actually requires a real database — RLS-backed
+  cross-tenant invisibility for all three `GET` routes. No authentication
+  providers, no background jobs, no anonymous invitation acceptance, no
+  pagination, no filtering, no search — all explicitly out of scope per
+  this task's founder directive. A fifth validation helper,
+  `requireNonEmptyString`, was written and exported but never called by
+  any route (every body field goes through `parseBody`/`parseUuid`/
+  `parseEmail` instead) — removed before commit rather than shipped as
+  unused public surface. Full detail:
+  [docs/modules/tenancy-http-interface.md](../../docs/modules/tenancy-http-interface.md).

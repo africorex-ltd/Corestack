@@ -63,6 +63,13 @@ import {
   PostgresInvitationRepository,
 } from "../../src/postgres/index.js";
 import { TenancyWorkflowHarness } from "../../test-support/workflow-harness.js";
+import { handleCreateOrganization } from "../../src/interface/http/create-organization-route.js";
+import { handleInviteMember } from "../../src/interface/http/invite-member-route.js";
+import { handleAcceptInvitation } from "../../src/interface/http/accept-invitation-route.js";
+import { handleGetOrganization } from "../../src/interface/http/get-organization-route.js";
+import { handleListOrganizationMembers } from "../../src/interface/http/list-organization-members-route.js";
+import { handleListPendingInvitations } from "../../src/interface/http/list-pending-invitations-route.js";
+import type { HttpRequest, TenancyHttpDeps } from "../../src/interface/http/types.js";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const APP_ROLE_PASSWORD = "test-only-scratch-db-password";
@@ -744,5 +751,299 @@ describe("Tenancy query services (E05-T12, Section 8: RLS verification)", () => 
       });
     });
     expect(seenFromA).toBeNull();
+  });
+});
+
+describe("Tenancy HTTP interface (E05-T13)", () => {
+  function buildHttpDeps(): TenancyHttpDeps {
+    return {
+      uowFactory: (organizationId) => new PostgresUnitOfWork(appRoleSql, organizationId),
+      organizationRepository,
+      membershipRepository,
+      invitationRepository,
+      ids,
+      clock,
+      invitationExpiryDays: 7,
+    };
+  }
+
+  /** Seeds an ACTIVE organization with an OWNER membership, directly via the repositories (bypassing HTTP) — the same setup pattern the repository/query-service describe blocks above already use. */
+  async function seedActiveOrgWithOwner(
+    ownerId: string,
+  ): Promise<{ organizationId: string; slug: string }> {
+    const organization = activeOrganization();
+    await withUow(null, (tx) => organizationRepository.save(tx, plainContext(), organization));
+
+    const ownerMembership = Membership.create({
+      id: randomUUID(),
+      organizationId: organization.id.value,
+      userId: ownerId,
+      role: MembershipRole.Owner,
+      now: REFERENCE_DATE,
+    });
+    await withUow(organization.id.value, (tx) =>
+      membershipRepository.save(tx, orgContext(organization.id.value), ownerMembership),
+    );
+
+    return { organizationId: organization.id.value, slug: organization.slug.value };
+  }
+
+  function httpRequest(
+    params: Record<string, string | undefined>,
+    headers: Record<string, string | undefined>,
+    body?: unknown,
+  ): HttpRequest {
+    return { params, headers, body };
+  }
+
+  it("POST /organizations: successful create (201)", async () => {
+    const actorId = randomUUID();
+    const slug = `acme-${randomUUID().slice(0, 8)}`;
+
+    const response = await handleCreateOrganization(
+      httpRequest({}, { "x-actor-id": actorId }, { name: "Acme Corp", slug }),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ slug, status: OrganizationStatus.Active });
+  });
+
+  it("POST /organizations: duplicate slug conflict (409)", async () => {
+    const actorId = randomUUID();
+    const slug = `acme-dup-${randomUUID().slice(0, 8)}`;
+    const deps = buildHttpDeps();
+
+    const first = await handleCreateOrganization(
+      httpRequest({}, { "x-actor-id": actorId }, { name: "First", slug }),
+      deps,
+    );
+    expect(first.status).toBe(201);
+
+    const second = await handleCreateOrganization(
+      httpRequest({}, { "x-actor-id": randomUUID() }, { name: "Second", slug }),
+      deps,
+    );
+    expect(second.status).toBe(409);
+  });
+
+  it("POST /organizations: validation failure for a missing body field (400)", async () => {
+    const response = await handleCreateOrganization(
+      httpRequest({}, { "x-actor-id": randomUUID() }, { name: "Acme Corp" }),
+      buildHttpDeps(),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("POST /organizations/:id/invitations: successful invite (201)", async () => {
+    const ownerId = randomUUID();
+    const { organizationId } = await seedActiveOrgWithOwner(ownerId);
+
+    const response = await handleInviteMember(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+        { email: "invitee@example.com", role: "MEMBER" },
+      ),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ email: "invitee@example.com", role: "MEMBER" });
+  });
+
+  it("POST /organizations/:id/invitations: authorization failure — actor has no membership (403)", async () => {
+    const ownerId = randomUUID();
+    const { organizationId } = await seedActiveOrgWithOwner(ownerId);
+    const strangerId = randomUUID();
+
+    const response = await handleInviteMember(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": strangerId, "x-organization-id": organizationId },
+        { email: "invitee@example.com", role: "MEMBER" },
+      ),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("POST /organizations/:id/invitations: duplicate pending invitation conflict (409)", async () => {
+    const ownerId = randomUUID();
+    const { organizationId } = await seedActiveOrgWithOwner(ownerId);
+    const deps = buildHttpDeps();
+    const email = "invitee@example.com";
+
+    const first = await handleInviteMember(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+        { email, role: "MEMBER" },
+      ),
+      deps,
+    );
+    expect(first.status).toBe(201);
+
+    const second = await handleInviteMember(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+        { email, role: "MEMBER" },
+      ),
+      deps,
+    );
+    expect(second.status).toBe(409);
+  });
+
+  it("POST /organizations/:id/invitations: validation failure for a malformed email (400)", async () => {
+    const ownerId = randomUUID();
+    const { organizationId } = await seedActiveOrgWithOwner(ownerId);
+
+    const response = await handleInviteMember(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+        { email: "not-an-email", role: "MEMBER" },
+      ),
+      buildHttpDeps(),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("POST /invitations/:id/accept: successful accept (200)", async () => {
+    const ownerId = randomUUID();
+    const acceptorId = randomUUID();
+    const { organizationId } = await seedActiveOrgWithOwner(ownerId);
+    const deps = buildHttpDeps();
+
+    const invited = await handleInviteMember(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+        { email: "invitee@example.com", role: "MEMBER" },
+      ),
+      deps,
+    );
+    expect(invited.status).toBe(201);
+    const invitationId = (invited.body as { invitationId: string }).invitationId;
+
+    const accepted = await handleAcceptInvitation(
+      httpRequest(
+        { id: invitationId },
+        { "x-actor-id": acceptorId, "x-organization-id": organizationId },
+        { email: "invitee@example.com" },
+      ),
+      deps,
+    );
+
+    expect(accepted.status).toBe(200);
+    expect(accepted.body).toMatchObject({ userId: acceptorId, role: "MEMBER" });
+  });
+
+  it("GET /organizations/:id: successful read (200)", async () => {
+    const ownerId = randomUUID();
+    const { organizationId, slug } = await seedActiveOrgWithOwner(ownerId);
+
+    const response = await handleGetOrganization(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+      ),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: organizationId, slug });
+  });
+
+  it("GET /organizations/:id: cross-tenant invisibility — 404, never 403 (real RLS)", async () => {
+    const ownerA = randomUUID();
+    const ownerB = randomUUID();
+    const { organizationId: orgA } = await seedActiveOrgWithOwner(ownerA);
+    const { organizationId: orgB } = await seedActiveOrgWithOwner(ownerB);
+
+    const response = await handleGetOrganization(
+      httpRequest({ id: orgB }, { "x-actor-id": ownerA, "x-organization-id": orgA }),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.status).not.toBe(403);
+  });
+
+  it("GET /organizations/:id/members: successful read (200)", async () => {
+    const ownerId = randomUUID();
+    const { organizationId } = await seedActiveOrgWithOwner(ownerId);
+
+    const response = await handleListOrganizationMembers(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+      ),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([expect.objectContaining({ userId: ownerId, role: "OWNER" })]);
+  });
+
+  it("GET /organizations/:id/members: cross-tenant invisibility — 404, never a silent wrong-org list (real RLS)", async () => {
+    const ownerA = randomUUID();
+    const ownerB = randomUUID();
+    const { organizationId: orgA } = await seedActiveOrgWithOwner(ownerA);
+    const { organizationId: orgB } = await seedActiveOrgWithOwner(ownerB);
+
+    const response = await handleListOrganizationMembers(
+      httpRequest({ id: orgB }, { "x-actor-id": ownerA, "x-organization-id": orgA }),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(Array.isArray(response.body)).toBe(false);
+  });
+
+  it("GET /organizations/:id/invitations: successful read (200)", async () => {
+    const ownerId = randomUUID();
+    const { organizationId } = await seedActiveOrgWithOwner(ownerId);
+    const deps = buildHttpDeps();
+
+    const invited = await handleInviteMember(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+        { email: "invitee@example.com", role: "MEMBER" },
+      ),
+      deps,
+    );
+    expect(invited.status).toBe(201);
+
+    const response = await handleListPendingInvitations(
+      httpRequest(
+        { id: organizationId },
+        { "x-actor-id": ownerId, "x-organization-id": organizationId },
+      ),
+      deps,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      expect.objectContaining({ email: "invitee@example.com", role: "MEMBER" }),
+    ]);
+  });
+
+  it("GET /organizations/:id/invitations: cross-tenant invisibility — 404, never a silent wrong-org list (real RLS)", async () => {
+    const ownerA = randomUUID();
+    const ownerB = randomUUID();
+    const { organizationId: orgA } = await seedActiveOrgWithOwner(ownerA);
+    const { organizationId: orgB } = await seedActiveOrgWithOwner(ownerB);
+
+    const response = await handleListPendingInvitations(
+      httpRequest({ id: orgB }, { "x-actor-id": ownerA, "x-organization-id": orgA }),
+      buildHttpDeps(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(Array.isArray(response.body)).toBe(false);
   });
 });

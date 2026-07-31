@@ -2,7 +2,47 @@
 
 > **Maintained automatically** — updated at every epic exit, milestone exit,
 > and remediation batch (governance §7.3). Numbers are from real runs, never
-> estimated. Last update: **2026-07-30** — **E05-T12 (Tenancy query
+> estimated. Last update: **2026-07-30** — **E05-T13 (Tenancy HTTP
+> interface) complete**: a thin HTTP adaptation layer over the existing use
+> cases and query services — six routes (`POST /organizations`, `POST
+> /organizations/:id/invitations`, `POST /invitations/:id/accept`, `GET
+> /organizations/:id`, `GET /organizations/:id/members`, `GET
+> /organizations/:id/invitations`), new `src/interface/http/`, exported
+> from a new `./interface` subpath. **No new repository method, use case,
+> or query was added.** No HTTP framework exists anywhere in this monorepo
+> yet — every handler is a plain `async` function with one `try`/`catch`;
+> `tenancyRoutes` is declarative route metadata a future Hono binding
+> would register, not a router this package implements (Section 14: no
+> controller framework, no middleware abstractions, no DI container).
+> `context.organizationId` always comes from an `X-Organization-Id`
+> header, never the URL path, even on routes whose path also names an
+> organization — a deliberate stand-in for a real authentication provider
+> (explicitly out of scope), validated as UUID-shaped everywhere it's
+> used. 404, never 403, for cross-tenant reads: `GET /organizations/:id`
+> relies entirely on RLS via `getOrganization`'s existing target-vs-context
+> shape; the two list routes call `getOrganization` as an explicit
+> pre-check before their own list query, since neither underlying query
+> service has an independent target parameter. One error-mapping function
+> derives HTTP status from the kernel `CoreError` taxonomy — every
+> tenancy-specific error class already extends one of the five mapped
+> classes, so the table needs no per-class entry (one documented
+> consequence: the invite route's role enum makes `CannotInviteOwnerError`
+> unreachable via HTTP, though it remains reachable for direct callers).
+> Documented divergences from the future full API standard: 400 not 422,
+> `{code, message, metadata}` not RFC 9457 `problem+json`, bare arrays not
+> `{data, pagination}`, no `/v1` prefix. Sharpest trust-boundary
+> limitation, documented explicitly: `POST /invitations/:id/accept` has no
+> organization id in its path at all and takes the accepting user's
+> claimed email from the request body — security rests entirely on
+> `acceptInvitation`'s own pre-existing email-equality check. Full detail:
+> [tenancy-http-interface.md](../modules/tenancy-http-interface.md). No
+> authentication providers, no background jobs, no anonymous invitation
+> acceptance, no pagination, no filtering, no search. Full
+> build/typecheck/lint/test/integration-test/architecture-fitness/
+> export-snapshot gate green repo-wide (tenancy unit tests 391→450,
+> 27→37 files; integration file 20→34 tests, run twice for stability;
+> architecture-fitness unchanged at 36). Prior update: **2026-07-30** —
+> **E05-T12 (Tenancy query
 > services) complete**: the module's complete read side —
 > `getOrganization`/`listOrganizationMembers`/`listPendingInvitations`,
 > each returning a plain DTO (`OrganizationSummary`/
@@ -448,14 +488,14 @@ for the first instance of this standard.
 
 | Metric               | Value                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 69 files / **756 tests**, re-measured 2026-07-30 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 27/391** (up from 24/378, +3 files/+13 tests — three new query-service unit test files: DTO mapping, sort order, `PENDING`-only filtering, cross-organization isolation against in-memory test doubles, E05-T12). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/20 tests** (up from 16, E05-T12 — 4 new tests proving organization A cannot see organization B through any query, and that `existsBySlug`'s platform-role elevation doesn't leak into query visibility within the same transaction; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T12 added no new package/manifest surface) |
+| Test files / tests   | **Unit/application lanes** (what `pnpm -r test` runs): 79 files / **815 tests**, re-measured 2026-07-31 — kernel 9/114 · lint fixtures 2/15 · architecture fitness 5/36 · platform 24/197 · example module 2/3 · **tenancy 37/450** (up from 27/391, +10 files/+59 tests — E05-T13: `validation.ts`/`context.ts`/`errors.ts` helper tests plus one test file per HTTP route handler against in-memory test doubles, and the export-surface snapshot's new `./interface` block; an initial `requireNonEmptyString` helper and its 3 tests were dropped before commit as unused public surface). **Integration lanes** (separate command, unmeasured this run except where noted): platform 14 files/97 tests, example module 1/4, **tenancy 1 file/34 tests** (up from 20, E05-T13 — 14 new HTTP-level tests: successful create/invite/accept, successful reads, a validation failure, duplicate conflicts, an authorization failure, and genuine RLS-backed cross-tenant invisibility for all three `GET` routes; `pnpm test:integration` against real PostgreSQL 18). Architecture-fitness stayed at 5/36 (E05-T13 added no new package/manifest surface) |
 | Kernel coverage (v8) | **98.25% stmts · 97.98% branch · 91.48% funcs** (target ≥90% domain/application — met)                                                                        |
 | Platform coverage    | Not yet measured — arrives with the coverage-gate task (E04-T11)                                                                                               |
 | Coverage CI gate     | Not yet enforced (E04-T11) — tracked, honest                                                                                                                   |
 | Unit-suite duration  | ~1 s repo-wide on cache hit (budget < 30 s)                                                                                                                    |
 | Contract suites      | **8** — Cache, RateLimiter, Logger, EventBus, UnitOfWork, Encrypter, ProcessedEventStore, IdempotencyStore (Health-check is deliberately not a 9th — snapshot-tested instead, see matrix) |
 | Certified adapters   | **13** of 13 existing adapters certified against their port's suite (every un-certified pairing is an adapter that doesn't exist yet — pino `Logger`, KMS `Encrypter` — correctly `pending`, not missing) — see [adapter-certification-matrix.md](../testing/adapter-certification-matrix.md) |
-| Snapshot count       | **4 files / 11 snapshots** (2026-07-30, up from 4/10) — kernel's `api-surface.test.ts` (2: `.` and `./testing` export lists) + platform's `api-surface.test.ts` (3: `.`, `./postgres`, `./testing`) + platform's `health-readiness.test.ts` (3, payload shapes) + tenancy's `api-surface.test.ts` (3, up from 2: `.`, `./postgres` — new in E05-T11 — and `./testing`; `./testing` snapshots `[]` — reserved, empty by design). All declared export conditions across kernel/platform/tenancy now gated — see [snapshot-governance.md](../testing/snapshot-governance.md) |
+| Snapshot count       | **4 files / 12 snapshots** (2026-07-30, up from 4/11) — kernel's `api-surface.test.ts` (2: `.` and `./testing` export lists) + platform's `api-surface.test.ts` (3: `.`, `./postgres`, `./testing`) + platform's `health-readiness.test.ts` (3, payload shapes) + tenancy's `api-surface.test.ts` (4, up from 3: `.`, `./postgres`, `./testing`, and `./interface` — new in E05-T13; `./testing` snapshots `[]` — reserved, empty by design). All declared export conditions across kernel/platform/tenancy now gated — see [snapshot-governance.md](../testing/snapshot-governance.md) |
 | Mutation-proven rules | **6 of 8 suites** (2026-07-30, up from 3) have on-record proof an assertion catches a real regression — Logger (ADR-0022), ProcessedEventStore (UUID bug), IdempotencyStore (historical ADR-0020 case), and, added by the E05 readiness gate, Cache (`NeverExpiringCache`), RateLimiter (`LexicographicRateLimiter`, reproducing E03-T41's real string-comparison bug), Encrypter (`FixedIvEncrypter`, reused-IV) — plus EventBus partial (1 of ~8 assertions) and the adapter-matrix fitness rule. `UnitOfWork` alone remains without mutation proof — a **deliberate deferral** (no plausible silent-mistake fixture exists for its assertions), not an oversight — see [contract-coverage-audit.md](../testing/contract-coverage-audit.md) |
 | Performance baselines | **10** scripts total across two directories — 6 outbox subsystem + 4 E04 contract-suite adapters (RateLimiter, IdempotencyStore, ProcessedEventStore, UnitOfWork); none CI-gated, deferred to E04-T13 — see [performance/README.md](performance/) |
 

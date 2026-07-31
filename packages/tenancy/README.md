@@ -50,7 +50,7 @@ src/
   infrastructure/postgres/rls/     RLS policy DDL generators (E05-T10)
   infrastructure/postgres/postgres-*-repository.ts  Real Postgres repository adapters (E05-T11)
   postgres/                   `./postgres` package export barrel (E05-T11) — repositories, mappers, role bootstrap, RLS generators, constraint-violation helpers
-  interface/                  reserved — HTTP bindings land in E05-T24..T25
+  interface/http/              Thin HTTP interface (E05-T13) — 6 route handlers, context extraction, error mapping, validation; `./interface` package export barrel
   testing/                    reserved — adopter-facing fakes land in E05-T28
 test-support/                 in-memory repositories + workflow harness + event collector (E05-T08) — internal, project-only; not exported, not adopter-facing
 ```
@@ -71,10 +71,43 @@ lifecycle contract (E03-T20, `@corestack/platform`'s
 composition root calls this factory once, injecting adapters it already
 constructed; the module never builds its own infrastructure.
 
-## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11) + query services (E05-T12)
+## Current status: scaffold (E05-T01) + Organization domain/application (E05-T02/T03) + Membership domain (E05-T04) + Invitation domain (E05-T05) + inviteMember use case (E05-T06) + acceptInvitation use case (E05-T07) + in-memory workflow integration harness (E05-T08) + Postgres schema design (E05-T09) + RLS policy design (E05-T10) + Postgres repository adapters (E05-T11) + query services (E05-T12) + HTTP interface (E05-T13)
 
 What exists today:
 
+- **HTTP interface** (`src/interface/http/`, exported from
+  `@corestack/tenancy/interface`, E05-T13) — the module is now
+  HTTP-accessible: `POST /organizations`, `POST
+  /organizations/:id/invitations`, `POST /invitations/:id/accept`, `GET
+  /organizations/:id`, `GET /organizations/:id/members`, `GET
+  /organizations/:id/invitations`. Every route is a plain `async`
+  function, `(request, deps) => Promise<response>`, with one
+  `try`/`catch` mapping thrown errors to HTTP status codes — no
+  controller framework, no middleware abstraction, no DI container, and
+  no HTTP framework dependency anywhere in this package (none exists
+  anywhere in the monorepo yet; `tenancyRoutes` is declarative route
+  metadata a future Hono binding would register, not a router this
+  package implements itself). `context.organizationId` always comes from
+  an `X-Organization-Id` header — **never** from the URL path, even on
+  routes whose path also names an organization — a deliberate stand-in
+  for what a real authentication provider will eventually supply
+  (explicitly out of scope for this task). `getOrganization`'s
+  target-vs-context shape (E05-T12) is reused, unmodified, as the
+  mechanism behind `GET /organizations/:id`'s RLS-backed 404 (never 403)
+  for a cross-tenant request; the two list routes call it as an explicit
+  pre-check before their own list query, since neither
+  `listOrganizationMembers` nor `listPendingInvitations` has an
+  independent target parameter to rely on RLS through directly. No new
+  repository method, no new use case, and no new query were added —
+  every route adapts an existing application/query service unchanged.
+  17 new unit tests (validation/context/error-mapping helpers plus one
+  test file per route against in-memory test doubles — cross-tenant
+  invisibility is not representable in-memory, since
+  `InMemoryOrganizationRepository.findById` ignores context) and 14 new
+  integration tests proving the full request/response cycle against real
+  PostgreSQL, including genuine RLS-backed cross-tenant invisibility for
+  all three `GET` routes. Full detail:
+  [docs/modules/tenancy-http-interface.md](../../docs/modules/tenancy-http-interface.md).
 - **Query services** (`src/application/get-organization-query.ts`,
   `list-organization-members-query.ts`, `list-pending-invitations-query.ts`,
   E05-T12) — the module's complete read side: `getOrganization`,
@@ -317,8 +350,8 @@ What exists today:
 - A schema-only migration (`migrations/tenancy/0001_create-schema.sql`)
   and the real table + RLS migration
   (`migrations/tenancy/0002_create-tenancy-tables.sql`, E05-T10).
-- 27 unit test files (391 tests) plus 1 real-Postgres integration test
-  file (20 tests, `pnpm test:integration`) covering the module scaffold (compilation
+- 37 unit test files (450 tests) plus 1 real-Postgres integration test
+  file (34 tests, `pnpm test:integration`) covering the module scaffold (compilation
   smoke test, module-registration test, export-surface snapshot test),
   the `Organization` aggregate (value objects, status transitions,
   invariants, event emission/ordering, immutability), `createOrganization`
@@ -353,8 +386,15 @@ What exists today:
   cross-organization isolation against in-memory test doubles) and 4 new
   integration tests proving organization A cannot see organization B
   through any of the three queries and that platform-role elevation
-  doesn't leak into query visibility — 20 real-Postgres integration
-  tests in total (E05-T11 + E05-T12).
+  doesn't leak into query visibility — plus 59 new HTTP interface unit
+  tests (E05-T13: `validation.ts`/`context.ts`/`errors.ts` helpers, one
+  test file per route handler against in-memory test doubles, and the
+  export-surface snapshot's new `./interface` block) and 14 new
+  HTTP-level integration tests (successful create/invite/accept,
+  successful reads, a validation failure, duplicate conflicts, an
+  authorization failure, and genuine RLS-backed cross-tenant invisibility
+  for all three `GET` routes) — 34 real-Postgres integration tests in
+  total (E05-T11 + E05-T12 + E05-T13).
 
 ## What is intentionally **not** implemented
 
@@ -431,13 +471,17 @@ What exists today:
 - **Real purge logic.** The registered handler **throws** on every
   invocation rather than silently succeeding — a loud placeholder, not a
   no-op, so a purge is never marked complete without a real delete once
-  Tenancy owns actual data. Real deletion ships in **E05-T13**.
-- **HTTP handlers, background jobs, anonymous invitation acceptance,
-  cross-organization admin features.** Real Postgres repository
-  adapters (E05-T11) and query services (E05-T12) now exist — see
-  above — but nothing wires them into an HTTP interface or a background
-  job yet; anonymous acceptance and admin bypasses remain explicitly out
-  of scope (Section 1/14 of the E05-T12 directive).
+  Tenancy owns actual data. Real deletion ships in a future task — not
+  E05-T13 as originally guessed here; E05-T13 turned out to be the HTTP
+  interface layer (see below).
+- **Authentication providers, background jobs, anonymous invitation
+  acceptance, cross-organization admin features.** The module is now
+  HTTP-accessible (E05-T13, see above) for six routes, but the interface
+  layer trusts caller-supplied `X-Actor-Id`/`X-Organization-Id` headers
+  in place of a real authentication provider (see
+  tenancy-http-interface.md's "Context extraction" section); nothing
+  wires a background job yet; anonymous acceptance and admin bypasses
+  remain explicitly out of scope (Section 1 of the E05-T13 directive).
 - **Pagination, filtering, and search on the query services.** Both list
   queries return every matching row in one call; neither accepts a role
   filter, a search term, or a cursor/limit parameter (Section 14 of the
@@ -450,8 +494,13 @@ What exists today:
   are standalone exported functions, not wired into
   `createTenancyModule`'s `useCases` object — the same deferred-wiring
   precedent noted above for the write-side use cases.
-- **HTTP interface.** `src/interface/` is a reserved, empty barrel.
-  **E05-T24–T25**.
+- **A full web server bootstrap.** `src/interface/http/` (E05-T13) ships
+  route handlers and declarative route metadata only — no HTTP framework
+  dependency, no router, no listening socket anywhere in this package
+  (Section 2 of the E05-T13 directive: "do not implement a full web
+  server bootstrap beyond what is needed for tests"). A future task
+  would add a real binding (Hono, per `docs/architecture/ARCHITECTURE.md`
+  §10) that iterates `tenancyRoutes` and actually serves them.
 - **Adopter-facing test fixtures.** `src/testing/` is a reserved, empty
   barrel, but its `./testing` export condition is declared in
   `package.json` now, so the import path is stable from day one.
@@ -459,13 +508,17 @@ What exists today:
 
 ## Next task
 
-**E05-T13**: not yet specified by the founder directive sequence. Not
-started. Per Section 15 of the E05-T12 directive, HTTP interfaces and
-background jobs are explicitly **not** to be started automatically — it
-waits for an explicit E05-T13 prompt.
+**E05-T14**: not yet specified by the founder directive sequence. Not
+started. Per Section 15 of the E05-T13 directive, background jobs and
+notification delivery are explicitly **not** to be started
+automatically — it waits for an explicit E05-T14 prompt.
 
 ## See also
 
+- [docs/modules/tenancy-http-interface.md](../../docs/modules/tenancy-http-interface.md) —
+  the HTTP interface (E05-T13): route table, validation rules, error
+  mapping, the 404-vs-403 rationale, serialization rules, and the future
+  pagination note.
 - [docs/modules/tenancy-query-services.md](../../docs/modules/tenancy-query-services.md) —
   the query services (E05-T12): query boundaries, DTO rationale, RLS
   assumptions, sorting guarantees, and the future pagination/filtering
